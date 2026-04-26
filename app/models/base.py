@@ -29,6 +29,20 @@ class CajaConfig(Base):
 
     members: Mapped[list["Member"]] = relationship("Member", back_populates="caja")
     loans: Mapped[list["Loan"]] = relationship("Loan", back_populates="caja")
+    groups: Mapped[list["MemberGroup"]] = relationship("MemberGroup", back_populates="caja", cascade="all, delete-orphan")
+
+
+class MemberGroup(Base):
+    __tablename__ = "member_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    caja_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("caja_config.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    caja: Mapped["CajaConfig"] = relationship("CajaConfig", back_populates="groups")
 
 
 class Member(Base):

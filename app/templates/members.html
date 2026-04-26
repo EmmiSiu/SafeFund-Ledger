@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="p-6 lg:p-8 max-w-[1400px]"
-     x-data="membersApp({{ caja_id }}, {{ members | tojson | safe }})"
+     x-data='membersApp({{ caja_id }}, {{ members | tojson | safe }}, {{ groups_json | safe }})'
      x-init="init()">
 
   <!-- Header -->
@@ -198,14 +198,10 @@
                   class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
                          rounded-xl px-4 py-2.5 text-slate-100 text-sm focus:outline-none
                          focus:ring-2 focus:ring-emerald-500/20 transition-all [color-scheme:dark]">
-            <option value="General">General</option>
-            <option value="Elenita">Elenita</option>
-            <option value="Natación">Natación</option>
-            <option value="Lolita Ayala">Lolita Ayala</option>
-            <option value="Emmanuel">Emmanuel</option>
-            <option value="Taichi">Taichi</option>
-            <option value="Panadería">Panadería</option>
-            <option value="Pili Mejía">Pili Mejía</option>
+            <template x-for="g in groups" :key="g.name">
+              <option :value="g.name" x-text="g.name"></option>
+            </template>
+            <option x-show="groups.length === 0" value="General">General</option>
           </select>
         </div>
 
@@ -328,12 +324,13 @@
 
 {% block scripts %}
 <script>
-function membersApp(cajaId, initialMembers) {
+function membersApp(cajaId, initialMembers, initialGroups) {
   return {
     cajaId,
     members: initialMembers,
+    groups: initialGroups || [],
 
-    newMember: { open: false, loading: false, error: null, name: '', group: 'General', savings_balance: 0 },
+    newMember: { open: false, loading: false, error: null, name: '', group: '', savings_balance: 0 },
     savings:   { open: false, loading: false, error: null, memberId: null, memberName: '', amount: 0, date: '' },
 
     init() {
@@ -341,7 +338,8 @@ function membersApp(cajaId, initialMembers) {
     },
 
     openNewMember() {
-      this.newMember = { open: true, loading: false, error: null, name: '', group: 'General', savings_balance: 0 };
+      const defaultGroup = this.groups.length > 0 ? this.groups[0].name : 'General';
+      this.newMember = { open: true, loading: false, error: null, name: '', group: defaultGroup, savings_balance: 0 };
       this.$nextTick(() => this.$el.querySelector('#nm-name')?.focus());
     },
 

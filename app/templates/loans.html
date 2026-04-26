@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="p-6 lg:p-8 max-w-[1400px]"
-     x-data="loanManager({{ loans_json | safe }}, {{ current_caja_id }}, {{ members_json | safe }}, {{ caja_rates | safe }})"
+     x-data='loanManager({{ loans_json | safe }}, {{ current_caja_id }}, {{ members_json | safe }}, {{ caja_rates | safe }})'
      x-init="init()">
 
   <!-- Header -->

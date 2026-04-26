@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.v1.cajas import router as cajas_router
 from app.api.v1.dashboard import router as dashboard_router
+from app.api.v1.groups import router as groups_router
 from app.api.v1.loans import router as loans_router
 from app.api.v1.members import router as members_router
 from app.api.v1.reports import router as reports_router
@@ -36,6 +37,7 @@ templates = Jinja2Templates(directory="app/templates")
 PREFIX = "/api/v1"
 app.include_router(cajas_router,        prefix=PREFIX)
 app.include_router(dashboard_router,    prefix=PREFIX)
+app.include_router(groups_router,       prefix=PREFIX)
 app.include_router(members_router,      prefix=PREFIX)
 app.include_router(loans_router,        prefix=PREFIX)
 app.include_router(transactions_router, prefix=PREFIX)
@@ -216,9 +218,11 @@ def loans_view(request: Request, caja_id: int = 1, db: Session = Depends(get_db)
 
 @app.get("/members")
 def members_view(request: Request, caja_id: int = 1, db: Session = Depends(get_db)):
+    from app.models.base import MemberGroup
     cajas = _get_cajas(db)
     caja  = _resolve_caja(caja_id, cajas)
     members_data = []
+    groups_data = []
     if caja:
         rows = (
             db.query(Member)
@@ -237,6 +241,11 @@ def members_view(request: Request, caja_id: int = 1, db: Session = Depends(get_d
                 "active_loans":    len(active),
                 "total_debt":      float(sum(l.outstanding_balance for l in active)),
             })
+            
+        group_rows = db.query(MemberGroup).filter(MemberGroup.caja_id == caja.id).order_by(MemberGroup.name).all()
+        for g in group_rows:
+            groups_data.append({"name": g.name})
+            
     return templates.TemplateResponse(request, "members.html", {
         "cajas":           cajas,
         "current_caja_id": caja.id if caja else None,
@@ -244,8 +253,39 @@ def members_view(request: Request, caja_id: int = 1, db: Session = Depends(get_d
         "members":         members_data,
         "caja_name":       caja.name if caja else "",
         "caja_id":         caja.id if caja else None,
+        "groups_json":     json.dumps(groups_data),
     })
 
+
+@app.get("/groups")
+def groups_view(request: Request, caja_id: int = 1, db: Session = Depends(get_db)):
+    from app.models.base import MemberGroup
+    cajas = _get_cajas(db)
+    caja  = _resolve_caja(caja_id, cajas)
+    
+    groups_data = []
+    if caja:
+        rows = db.query(MemberGroup).filter(MemberGroup.caja_id == caja.id).order_by(MemberGroup.name).all()
+        for g in rows:
+            members_count = db.query(func.count(Member.id)).filter(
+                Member.group == g.name, 
+                Member.caja_id == caja.id,
+                Member.is_active == True
+            ).scalar() or 0
+            
+            groups_data.append({
+                "id": g.id,
+                "name": g.name,
+                "members_count": members_count,
+            })
+            
+    return templates.TemplateResponse(request, "groups.html", {
+        "cajas":           cajas,
+        "current_caja_id": caja.id if caja else None,
+        "active_page":     "groups",
+        "groups_json":     json.dumps(groups_data),
+        "caja_name":       caja.name if caja else "",
+    })
 
 @app.get("/settings")
 def settings_view(request: Request, db: Session = Depends(get_db)):
