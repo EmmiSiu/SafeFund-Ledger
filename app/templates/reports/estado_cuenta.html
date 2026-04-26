@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  @page {
+    size: A4;
+    margin: 15mm 12mm 15mm 12mm;
+    @bottom-center {
+      content: "Pág. " counter(page) " de " counter(pages);
+      font-size: 8pt;
+      color: #64748b;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "DejaVu Sans", sans-serif; font-size: 9pt; color: #1e293b; background: #fff; }
+
+  /* Header */
+  .header { display: flex; justify-content: space-between; align-items: flex-start;
+            border-bottom: 2.5px solid #0f172a; padding-bottom: 10px; margin-bottom: 14px; }
+  .logo-block h1 { font-size: 18pt; font-weight: bold; color: #0f172a; letter-spacing: -0.5px; }
+  .logo-block p  { font-size: 8pt; color: #475569; margin-top: 1px; }
+  .meta-block    { text-align: right; font-size: 8pt; color: #64748b; }
+  .meta-block strong { color: #0f172a; }
+
+  /* Section title */
+  .section-title {
+    font-size: 10pt; font-weight: bold; color: #0f172a;
+    border-left: 3px solid #10b981; padding-left: 7px;
+    margin: 14px 0 7px 0;
+  }
+
+  /* Info grid */
+  .info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px; }
+  .info-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px; padding: 7px 10px; }
+  .info-card .label { font-size: 7pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+  .info-card .value { font-size: 10pt; font-weight: bold; color: #0f172a; margin-top: 2px; }
+  .info-card .value.green { color: #059669; }
+  .info-card .value.amber { color: #d97706; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+  thead tr { background: #0f172a; color: #fff; }
+  thead th { padding: 6px 8px; text-align: left; font-weight: 600; font-size: 7.5pt; letter-spacing: 0.3px; }
+  thead th.right { text-align: right; }
+  tbody tr:nth-child(even) { background: #f8fafc; }
+  tbody tr:hover { background: #f1f5f9; }
+  tbody td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+  tbody td.right { text-align: right; font-family: monospace; }
+  tbody td.center { text-align: center; }
+  tfoot tr { background: #f1f5f9; font-weight: bold; }
+  tfoot td { padding: 6px 8px; border-top: 2px solid #cbd5e1; }
+  tfoot td.right { text-align: right; font-family: monospace; }
+
+  /* Badge */
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 7pt; font-weight: bold; }
+  .badge-blue   { background: #dbeafe; color: #1e40af; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+  .badge-green  { background: #dcfce7; color: #166534; }
+  .badge-amber  { background: #fef3c7; color: #92400e; }
+  .badge-gray   { background: #f1f5f9; color: #475569; }
+
+  /* Loan block */
+  .loan-block { margin-bottom: 16px; page-break-inside: avoid; }
+  .loan-header { display: flex; justify-content: space-between; align-items: center;
+                 background: #1e293b; color: #fff; padding: 7px 10px; border-radius: 5px 5px 0 0; }
+  .loan-header h4 { font-size: 9pt; font-weight: bold; }
+  .loan-header .sub { font-size: 7.5pt; color: #94a3b8; margin-top: 1px; }
+  .loan-header .amount { text-align: right; }
+  .loan-header .amount .val { font-size: 12pt; font-weight: bold; font-family: monospace; }
+  .loan-header .amount .lbl { font-size: 7pt; color: #94a3b8; }
+
+  .loan-stats { display: grid; grid-template-columns: repeat(3,1fr); background: #f8fafc;
+                border: 1px solid #e2e8f0; border-top: none; }
+  .loan-stats div { padding: 6px 10px; border-right: 1px solid #e2e8f0; }
+  .loan-stats div:last-child { border-right: none; }
+  .loan-stats .slabel { font-size: 7pt; color: #64748b; }
+  .loan-stats .sval   { font-size: 9pt; font-weight: bold; color: #0f172a; margin-top: 1px; font-family: monospace; }
+  .loan-stats .sval.green { color: #059669; }
+  .loan-stats .sval.amber { color: #d97706; }
+
+  .loan-table-wrap { border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 5px 5px; overflow: hidden; }
+
+  /* Footer */
+  .doc-footer { margin-top: 20px; padding-top: 8px; border-top: 1px solid #e2e8f0;
+                display: flex; justify-content: space-between; font-size: 7.5pt; color: #94a3b8; }
+
+  .no-data { text-align: center; padding: 16px; color: #94a3b8; font-style: italic; }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ────────────────────────────────────────────────────────────── -->
+<div class="header">
+  <div class="logo-block">
+    <h1>SafeFund Ledger</h1>
+    <p>Estado de Cuenta &mdash; {{ caja.name }}</p>
+  </div>
+  <div class="meta-block">
+    <div><strong>{{ member.name }}</strong></div>
+    <div>Grupo: {{ member.group or '—' }}</div>
+    <div>Fecha: {{ generated_at | fdate }}</div>
+  </div>
+</div>
+
+<!-- ── RESUMEN ───────────────────────────────────────────────────────────── -->
+<div class="info-grid">
+  <div class="info-card">
+    <div class="label">Total Ahorros</div>
+    <div class="value green">{{ total_savings | mxn }}</div>
+  </div>
+  <div class="info-card">
+    <div class="label">Intereses Pagados</div>
+    <div class="value amber">{{ total_interest_all | mxn }}</div>
+  </div>
+  <div class="info-card">
+    <div class="label">Capital Amortizado</div>
+    <div class="value">{{ total_capital_all | mxn }}</div>
+  </div>
+  <div class="info-card">
+    <div class="label">Saldo Insoluto</div>
+    <div class="value {% if outstanding_total > 0 %}amber{% else %}green{% endif %}">
+      {{ outstanding_total | mxn }}
+    </div>
+  </div>
+</div>
+
+<!-- ── AHORROS ───────────────────────────────────────────────────────────── -->
+<div class="section-title">Movimientos de Ahorro</div>
+
+{% if savings %}
+<table>
+  <thead>
+    <tr>
+      <th>Fecha</th>
+      <th>Descripción</th>
+      <th class="right">Monto</th>
+      <th class="right">Saldo Acum.</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% set ns = namespace(running=0) %}
+    {% for t in savings %}
+    {% set ns.running = ns.running + t.amount %}
+    <tr>
+      <td>{{ t.transaction_date | fdate }}</td>
+      <td>{{ t.notes or 'Aportación de ahorro' }}</td>
+      <td class="right">{{ t.amount | mxn }}</td>
+      <td class="right">{{ ns.running | mxn }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="2">Total</td>
+      <td></td>
+      <td class="right">{{ total_savings | mxn }}</td>
+    </tr>
+  </tfoot>
+</table>
+{% else %}
+<p class="no-data">Sin movimientos de ahorro registrados.</p>
+{% endif %}
+
+<!-- ── PRÉSTAMOS ─────────────────────────────────────────────────────────── -->
+{% if loan_details %}
+<div class="section-title">Historial de Préstamos</div>
+
+{% for d in loan_details %}
+{% set loan = d.loan %}
+<div class="loan-block">
+  <div class="loan-header">
+    <div>
+      <h4>Préstamo #{{ loan.id }}</h4>
+      <div class="sub">
+        Inicio {{ loan.start_date | fdate }}
+        &nbsp;&middot;&nbsp;
+        Tasa {{ (loan.interest_rate * 100) | round(1) }}% mensual
+        &nbsp;&middot;&nbsp;
+        <span class="badge {% if loan.status == 'paid' %}badge-green{% elif loan.status == 'active' %}badge-amber{% else %}badge-gray{% endif %}">
+          {{ loan.status | upper }}
+        </span>
+      </div>
+    </div>
+    <div class="amount">
+      <div class="lbl">Saldo insoluto</div>
+      <div class="val">{{ loan.outstanding_balance | mxn }}</div>
+    </div>
+  </div>
+
+  <div class="loan-stats">
+    <div>
+      <div class="slabel">Capital Original</div>
+      <div class="sval">{{ loan.initial_amount | mxn }}</div>
+    </div>
+    <div>
+      <div class="slabel">Intereses Pagados</div>
+      <div class="sval amber">{{ d.total_interest_paid | mxn }}</div>
+    </div>
+    <div>
+      <div class="slabel">Capital Amortizado</div>
+      <div class="sval green">{{ d.total_capital_paid | mxn }}</div>
+    </div>
+  </div>
+
+  <div class="loan-table-wrap">
+    {% if d.transactions %}
+    <table>
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Tipo</th>
+          <th>Notas</th>
+          <th class="right">Monto</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in d.transactions %}
+        <tr>
+          <td>{{ t.transaction_date | fdate }}</td>
+          <td>
+            {% if t.transaction_type == 'interest_payment' %}
+              <span class="badge badge-amber">Interés</span>
+            {% elif t.transaction_type == 'capital_payment' %}
+              <span class="badge badge-green">Capital</span>
+            {% else %}
+              <span class="badge badge-gray">{{ t.transaction_type }}</span>
+            {% endif %}
+          </td>
+          <td>{{ t.notes or '—' }}</td>
+          <td class="right">{{ t.amount | mxn }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="3">Subtotal pagado (interés + capital)</td>
+          <td class="right">{{ (d.total_interest_paid + d.total_capital_paid) | mxn }}</td>
+        </tr>
+      </tfoot>
+    </table>
+    {% else %}
+    <p class="no-data">Sin movimientos registrados en este préstamo.</p>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- ── FOOTER ────────────────────────────────────────────────────────────── -->
+<div class="doc-footer">
+  <span>Generado el {{ generated_at | fdate }} &mdash; SafeFund Ledger</span>
+  <span>{{ caja.name }} &middot; {{ member.name }}</span>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,23 @@
+# Web Framework & Server
+fastapi
+uvicorn[standard]
+python-multipart
+jinja2
+
+# Base de Datos & ORM
+sqlalchemy
+alembic
+pydantic-settings
+python-dotenv
+
+# Motor Financiero y Datos (Para procesar tus CSV/Excel actuales)
+pandas
+openpyxl
+
+# Reportes PDF
+weasyprint
+
+# Utilidades
+cryptography
+python-jose[cryptography]
+passlib[bcrypt]

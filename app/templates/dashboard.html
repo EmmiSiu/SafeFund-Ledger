@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {% if metrics %}{{ metrics.caja_name }}{% else %}SafeFund{% endif %}{% endblock %}
+
+{% block content %}
+<div class="p-6 lg:p-8 max-w-[1400px]"
+     x-data="dashboardApp({{ current_caja_id or 'null' }})"
+     x-init="init()">
+
+  <!-- Page header -->
+  <div class="flex items-start justify-between mb-7">
+    <div>
+      <h1 class="text-xl font-semibold text-slate-100">Dashboard</h1>
+      <p class="text-sm text-slate-500 mt-0.5">
+        {% if metrics %}{{ metrics.caja_name }} &middot; {% endif %}{{ today }}
+      </p>
+    </div>
+    {% if metrics %}
+    <a href="/loans?caja_id={{ metrics.caja_id }}"
+       class="hidden sm:flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500
+              text-white rounded-xl text-sm font-medium transition-colors shadow-lg shadow-emerald-900/30">
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 1v8m0 0v1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      Préstamos activos
+    </a>
+    {% endif %}
+  </div>
+
+  {% if not metrics %}
+  <!-- Empty state -->
+  <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-16 text-center">
+    <div class="w-16 h-16 rounded-2xl bg-slate-700/60 flex items-center justify-center mx-auto mb-4">
+      <svg class="w-8 h-8 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+      </svg>
+    </div>
+    <p class="text-slate-300 font-medium mb-1">No hay cajas registradas</p>
+    <p class="text-slate-500 text-sm mb-6">Crea la primera caja para empezar a operar</p>
+    <a href="/docs#/Cajas/create_caja_api_v1_cajas__post" target="_blank"
+       class="inline-flex px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-medium transition-colors">
+      Crear caja →
+    </a>
+  </div>
+
+  {% else %}
+
+  <!-- ── KPI Cards ──────────────────────────────────────────────────────────── -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+
+    <!-- Total en Caja -->
+    <div class="group bg-slate-800/60 rounded-2xl p-5 border border-slate-700/50 hover:border-slate-600/50 transition-colors">
+      <div class="flex items-start justify-between mb-3">
+        <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Total en Caja</p>
+        <div class="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/>
+          </svg>
+        </div>
+      </div>
+      <p class="text-2xl font-bold text-slate-100 font-mono tracking-tight">
+        ${{ "{:,.2f}".format(metrics.total_en_caja) }}
+      </p>
+      <p class="text-xs text-slate-500 mt-1.5">{{ metrics.total_socios }} socio{{ 's' if metrics.total_socios != 1 }} activo{{ 's' if metrics.total_socios != 1 }}</p>
+    </div>
+
+    <!-- Total Prestado -->
+    <div class="group bg-slate-800/60 rounded-2xl p-5 border border-slate-700/50 hover:border-slate-600/50 transition-colors">
+      <div class="flex items-start justify-between mb-3">
+        <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Total Prestado</p>
+        <div class="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+          <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+      </div>
+      <p class="text-2xl font-bold text-slate-100 font-mono tracking-tight">
+        ${{ "{:,.2f}".format(metrics.capital_en_prestamos) }}
+      </p>
+      <p class="text-xs text-slate-500 mt-1.5">{{ metrics.prestamos_activos }} préstamo{{ 's' if metrics.prestamos_activos != 1 }} activo{{ 's' if metrics.prestamos_activos != 1 }}</p>
+    </div>
+
+    <!-- Intereses Ganados (Rendimiento) -->
+    <div class="group bg-slate-800/60 rounded-2xl p-5 border border-slate-700/50 hover:border-slate-600/50 transition-colors">
+      <div class="flex items-start justify-between mb-3">
+        <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Rendimiento</p>
+        <div class="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+          <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+          </svg>
+        </div>
+      </div>
+      <p class="text-2xl font-bold text-emerald-400 font-mono tracking-tight">
+        ${{ "{:,.2f}".format(metrics.intereses_totales) }}
+      </p>
+      <p class="text-xs text-slate-500 mt-1.5">
+        +${{ "{:,.2f}".format(metrics.intereses_mes) }} este mes
+      </p>
+    </div>
+
+    <!-- Proyección de cierre -->
+    <div class="group bg-gradient-to-br from-emerald-900/30 to-slate-800/60 rounded-2xl p-5
+                border border-emerald-700/30 hover:border-emerald-600/40 transition-colors">
+      <div class="flex items-start justify-between mb-3">
+        <p class="text-xs font-medium text-emerald-400/80 uppercase tracking-widest">Proyección Cierre</p>
+        <div class="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+        </div>
+      </div>
+      <p class="text-2xl font-bold text-emerald-300 font-mono tracking-tight">
+        ${{ "{:,.2f}".format(metrics.proyeccion_cierre) }}
+      </p>
+      <p class="text-xs text-emerald-600 mt-1.5">Ahorros + intereses estimados Nov 2026</p>
+    </div>
+
+  </div>
+
+  <!-- ── Chart + secondary stats ──────────────────────────────────────────── -->
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+
+    <!-- Growth chart (2/3 width) -->
+    <div class="xl:col-span-2 bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+      <div class="flex items-center justify-between mb-5">
+        <div>
+          <h3 class="text-sm font-semibold text-slate-200">Crecimiento de la Caja</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Acumulado ahorros e intereses cobrados</p>
+        </div>
+        <!-- Legend -->
+        <div class="flex items-center gap-4 text-xs text-slate-400">
+          <span class="flex items-center gap-1.5">
+            <span class="w-3 h-0.5 rounded bg-emerald-400 inline-block"></span> Ahorros
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span class="w-3 h-0.5 rounded bg-amber-400 inline-block"></span> Rendimiento
+          </span>
+        </div>
+      </div>
+
+      <!-- Chart skeleton while loading -->
+      <div x-show="chartLoading" class="h-56 flex items-center justify-center">
+        <div class="flex flex-col items-center gap-3">
+          <div class="flex gap-1">
+            <span class="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style="animation-delay:0ms"></span>
+            <span class="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style="animation-delay:150ms"></span>
+            <span class="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style="animation-delay:300ms"></span>
+          </div>
+          <p class="text-xs text-slate-500">Cargando datos…</p>
+        </div>
+      </div>
+      <div x-show="!chartLoading" x-cloak>
+        <canvas id="growthChart" class="h-56" style="max-height:224px"></canvas>
+      </div>
+    </div>
+
+    <!-- Side stats (1/3 width) -->
+    <div class="flex flex-col gap-4">
+
+      <!-- Capital disponible -->
+      <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5 flex-1">
+        <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3">Capital Disponible</p>
+        <p class="text-3xl font-bold font-mono
+                  {% if metrics.capital_disponible >= 0 %}text-emerald-400{% else %}text-red-400{% endif %}">
+          ${{ "{:,.2f}".format(metrics.capital_disponible) }}
+        </p>
+        <p class="text-xs text-slate-500 mt-2">Ahorros menos saldo prestado</p>
+        <!-- Mini progress bar -->
+        {% if metrics.total_en_caja > 0 %}
+        {% set pct = [(metrics.capital_en_prestamos / metrics.total_en_caja * 100), 100]|min %}
+        <div class="mt-3">
+          <div class="flex justify-between text-xs text-slate-500 mb-1">
+            <span>Utilización</span>
+            <span>{{ "{:.0f}".format(pct) }}%</span>
+          </div>
+          <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all"
+                 style="width: {{ "{:.1f}".format(pct) }}%"></div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Quick actions -->
+      <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+        <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3">Acciones</p>
+        <div class="space-y-2">
+          <a href="/loans?caja_id={{ metrics.caja_id }}"
+             class="flex items-center gap-2.5 w-full px-3 py-2.5 bg-emerald-600/20 hover:bg-emerald-600/30
+                    text-emerald-300 rounded-xl text-sm font-medium transition-colors border border-emerald-600/20">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+            Ver Préstamos
+          </a>
+          <a href="/members?caja_id={{ metrics.caja_id }}"
+             class="flex items-center gap-2.5 w-full px-3 py-2.5 bg-slate-700/50 hover:bg-slate-700
+                    text-slate-300 rounded-xl text-sm font-medium transition-colors">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            Ver Socios
+          </a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="/static/js/dashboard.js"></script>
+{% endblock %}

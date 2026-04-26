@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(source venv/Scripts/activate)",
+      "Bash(alembic init:*)",
+      "Bash(alembic revision:*)",
+      "Bash(alembic upgrade:*)",
+      "Bash(source /c/Users/emiro/OneDrive/Escritorio/SafeFund-Ledger/venv/Scripts/activate)",
+      "Bash(docker compose:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  @page {
+    size: A4;
+    margin: 15mm 12mm 15mm 12mm;
+    @bottom-center {
+      content: "Pág. " counter(page) " de " counter(pages);
+      font-size: 8pt;
+      color: #64748b;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "DejaVu Sans", sans-serif; font-size: 9pt; color: #1e293b; background: #fff; }
+
+  /* Header */
+  .header { display: flex; justify-content: space-between; align-items: flex-start;
+            border-bottom: 2.5px solid #0f172a; padding-bottom: 10px; margin-bottom: 14px; }
+  .logo-block h1 { font-size: 18pt; font-weight: bold; color: #0f172a; letter-spacing: -0.5px; }
+  .logo-block p  { font-size: 8pt; color: #475569; margin-top: 1px; }
+  .meta-block    { text-align: right; font-size: 8pt; color: #64748b; }
+  .meta-block strong { color: #0f172a; font-size: 10pt; }
+
+  /* KPI Cards */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 16px; }
+  .kpi-card { border-radius: 6px; padding: 10px 12px; }
+  .kpi-card .label { font-size: 7.5pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .kpi-card .value { font-size: 13pt; font-weight: bold; font-family: monospace; }
+  .kpi-card .sub   { font-size: 7pt; margin-top: 3px; }
+
+  .kpi-slate  { background: #f8fafc; border: 1px solid #e2e8f0; }
+  .kpi-slate .value { color: #0f172a; }
+  .kpi-green  { background: #f0fdf4; border: 1px solid #bbf7d0; }
+  .kpi-green .value { color: #166534; }
+  .kpi-amber  { background: #fffbeb; border: 1px solid #fde68a; }
+  .kpi-amber .value { color: #92400e; }
+  .kpi-blue   { background: #eff6ff; border: 1px solid #bfdbfe; }
+  .kpi-blue .value  { color: #1e40af; }
+
+  /* Section title */
+  .section-title {
+    font-size: 10pt; font-weight: bold; color: #0f172a;
+    border-left: 3px solid #10b981; padding-left: 7px;
+    margin: 16px 0 8px 0;
+  }
+
+  /* Summary bar */
+  .summary-bar { display: flex; gap: 0; margin-bottom: 14px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
+  .summary-bar .item { flex: 1; padding: 8px 10px; border-right: 1px solid #e2e8f0; }
+  .summary-bar .item:last-child { border-right: none; }
+  .summary-bar .slabel { font-size: 7pt; color: #64748b; }
+  .summary-bar .sval   { font-size: 9pt; font-weight: bold; font-family: monospace; margin-top: 2px; }
+  .summary-bar .green { color: #059669; }
+  .summary-bar .amber { color: #d97706; }
+  .summary-bar .red   { color: #dc2626; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+  thead tr { background: #0f172a; color: #fff; }
+  thead th { padding: 6px 8px; text-align: left; font-weight: 600; font-size: 7.5pt; letter-spacing: 0.3px; }
+  thead th.right  { text-align: right; }
+  thead th.center { text-align: center; }
+  tbody tr:nth-child(even) { background: #f8fafc; }
+  tbody td { padding: 5.5px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+  tbody td.right  { text-align: right; font-family: monospace; }
+  tbody td.center { text-align: center; }
+  tfoot tr { background: #f1f5f9; font-weight: bold; }
+  tfoot td { padding: 6px 8px; border-top: 2px solid #cbd5e1; }
+  tfoot td.right { text-align: right; font-family: monospace; }
+
+  /* Badge */
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 7pt; font-weight: bold; letter-spacing: 0.3px; }
+  .badge-green  { background: #dcfce7; color: #166534; }
+  .badge-amber  { background: #fef3c7; color: #92400e; }
+  .badge-blue   { background: #dbeafe; color: #1e40af; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+
+  /* Progress bar (utilization) */
+  .utilization-wrap { margin-top: 4px; }
+  .utilization-bar  { height: 5px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
+  .utilization-fill { height: 100%; border-radius: 3px; }
+  .fill-green  { background: #10b981; }
+  .fill-amber  { background: #f59e0b; }
+  .fill-red    { background: #ef4444; }
+  .util-text   { font-size: 7pt; color: #64748b; margin-top: 2px; }
+
+  /* Footer */
+  .doc-footer { margin-top: 20px; padding-top: 8px; border-top: 1px solid #e2e8f0;
+                display: flex; justify-content: space-between; font-size: 7.5pt; color: #94a3b8; }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ────────────────────────────────────────────────────────────── -->
+<div class="header">
+  <div class="logo-block">
+    <h1>SafeFund Ledger</h1>
+    <p>Reporte de Caja &mdash; Corte {{ generated_at | fdate }}</p>
+  </div>
+  <div class="meta-block">
+    <strong>{{ caja.name }}</strong><br/>
+    <span>{{ n_current + n_overdue }} préstamos activos</span><br/>
+    <span>Tasa interna: {{ (caja.interest_rate_internal * 100) | round(1) }}% &nbsp;|&nbsp; Externa: {{ (caja.interest_rate_external * 100) | round(1) }}%</span>
+  </div>
+</div>
+
+<!-- ── KPIs ──────────────────────────────────────────────────────────────── -->
+<div class="kpi-grid">
+  <div class="kpi-card kpi-green">
+    <div class="label">Total Ahorros</div>
+    <div class="value">{{ total_ahorros | mxn }}</div>
+    <div class="sub" style="color:#166534">Capital del fondo</div>
+  </div>
+  <div class="kpi-card kpi-amber">
+    <div class="label">Total Prestado</div>
+    <div class="value">{{ total_prestado | mxn }}</div>
+    <div class="sub" style="color:#92400e">Cartera vigente</div>
+  </div>
+  <div class="kpi-card kpi-blue">
+    <div class="label">Rendimientos</div>
+    <div class="value">{{ total_rendimientos | mxn }}</div>
+    <div class="sub" style="color:#1e40af">Intereses cobrados</div>
+  </div>
+  <div class="kpi-card kpi-slate">
+    <div class="label">Capital Disponible</div>
+    <div class="value">{{ capital_disponible | mxn }}</div>
+    <div class="sub">Para nuevos préstamos</div>
+  </div>
+</div>
+
+<!-- Utilization bar -->
+{% if total_ahorros > 0 %}
+{% set util_pct = ((total_prestado / total_ahorros) * 100) | round(1) %}
+<div class="utilization-wrap" style="margin-bottom: 16px;">
+  <div style="display:flex; justify-content:space-between; font-size:7.5pt; color:#64748b; margin-bottom:3px;">
+    <span>Utilización del fondo</span>
+    <span style="font-weight:bold; color:{% if util_pct >= 80 %}#dc2626{% elif util_pct >= 60 %}#d97706{% else %}#059669{% endif %}">{{ util_pct }}%</span>
+  </div>
+  <div class="utilization-bar">
+    <div class="utilization-fill {% if util_pct >= 80 %}fill-red{% elif util_pct >= 60 %}fill-amber{% else %}fill-green{% endif %}"
+         style="width:{{ [util_pct, 100] | min }}%"></div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── RESUMEN MES ─────────────────────────────────────────────────────── -->
+<div class="summary-bar">
+  <div class="item">
+    <div class="slabel">Interés Esperado / Mes</div>
+    <div class="sval amber">{{ total_interest_due_month | mxn }}</div>
+  </div>
+  <div class="item">
+    <div class="slabel">Al Corriente</div>
+    <div class="sval green">{{ n_current }} préstamos</div>
+  </div>
+  <div class="item">
+    <div class="slabel">Con Atraso</div>
+    <div class="sval {% if n_overdue > 0 %}red{% else %}green{% endif %}">{{ n_overdue }} préstamos</div>
+  </div>
+  <div class="item">
+    <div class="slabel">Total Activos</div>
+    <div class="sval">{{ n_current + n_overdue }}</div>
+  </div>
+</div>
+
+<!-- ── TABLA DE PRÉSTAMOS ─────────────────────────────────────────────── -->
+<div class="section-title">Detalle de Préstamos Activos</div>
+
+{% if loan_rows %}
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Socio</th>
+      <th>Grupo</th>
+      <th>Tipo</th>
+      <th class="right">Capital Orig.</th>
+      <th class="right">Saldo Insoluto</th>
+      <th class="right">Interés / Mes</th>
+      <th class="center">Últ. Pago Int.</th>
+      <th class="center">Estatus</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in loan_rows %}
+    <tr>
+      <td style="color:#64748b;">{{ r.loan.id }}</td>
+      <td><strong>{{ r.member_name }}</strong></td>
+      <td>{{ r.group }}</td>
+      <td>
+        {% if r.loan.loan_type == 'internal' %}
+          <span class="badge badge-blue">Interno</span>
+        {% else %}
+          <span class="badge badge-purple">Externo</span>
+        {% endif %}
+      </td>
+      <td class="right">{{ r.loan.initial_amount | mxn }}</td>
+      <td class="right" style="font-weight:bold;">{{ r.loan.outstanding_balance | mxn }}</td>
+      <td class="right" style="color:#d97706;">{{ r.monthly_interest | mxn }}</td>
+      <td class="center" style="color:#64748b;">
+        {% if r.last_interest_date %}{{ r.last_interest_date | fdate }}{% else %}—{% endif %}
+      </td>
+      <td class="center">
+        {% if r.interest_current %}
+          <span class="badge badge-green">Al corriente</span>
+        {% else %}
+          <span class="badge badge-amber">Pendiente</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4">TOTAL</td>
+      <td></td>
+      <td class="right">{{ total_prestado | mxn }}</td>
+      <td class="right">{{ total_interest_due_month | mxn }}</td>
+      <td></td>
+      <td></td>
+    </tr>
+  </tfoot>
+</table>
+{% else %}
+<p style="text-align:center; color:#94a3b8; padding:20px; font-style:italic;">
+  No hay préstamos activos en esta caja.
+</p>
+{% endif %}
+
+<!-- ── FOOTER ────────────────────────────────────────────────────────────── -->
+<div class="doc-footer">
+  <span>Generado el {{ generated_at | fdate }} &mdash; SafeFund Ledger</span>
+  <span>{{ caja.name }}</span>
+</div>
+
+</body>
+</html>
