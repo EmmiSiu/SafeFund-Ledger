@@ -97,28 +97,150 @@
           </div>
         </div>
 
+        <!-- start_date info -->
+        <div x-show="c.start_date" class="flex items-center justify-between text-sm">
+          <span class="text-slate-500">Inicio de ciclo</span>
+          <span class="font-mono text-slate-300 text-xs" x-text="c.start_date ?? '—'"></span>
+        </div>
+        <div x-show="!c.start_date"
+             class="text-xs text-amber-500/80 bg-amber-900/20 border border-amber-700/30 rounded-lg px-3 py-2">
+          Sin fecha de inicio — configura para activar las quincenas
+        </div>
+
         <!-- Actions -->
         <div class="flex gap-2 pt-1 border-t border-slate-700/40">
+          <button @click="openEdit(c)"
+                  class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600/20
+                         hover:bg-emerald-600/30 text-emerald-300 rounded-xl text-xs font-medium transition-colors border border-emerald-600/20">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+            </svg>
+            Editar
+          </button>
           <a :href="'/api/v1/reports/caja/' + c.id" target="_blank"
              class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-700/50
                     hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium transition-colors">
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
             </svg>
-            Reporte PDF
+            PDF
           </a>
-          <a :href="'/members?caja_id=' + c.id"
+          <a :href="'/quincenas?caja_id=' + c.id"
              class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-700/50
                     hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium transition-colors">
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
             </svg>
-            Ver Socios
+            Quincenas
           </a>
         </div>
 
       </div>
     </template>
+  </div>
+
+  <!-- ── Editar Caja Modal ─────────────────────────────────────────────────── -->
+  <div x-show="editModal.open" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       @keydown.escape.window="editModal.open = false">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="editModal.open = false"></div>
+
+    <div class="relative bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl border border-slate-700/80 z-10"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         @click.stop>
+
+      <div class="px-6 py-5 border-b border-slate-700/60 flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-semibold text-slate-100">Editar Caja</h3>
+          <p class="text-xs text-slate-500 mt-0.5" x-text="'ID #' + editModal.caja_id"></p>
+        </div>
+        <button @click="editModal.open = false" class="text-slate-500 hover:text-slate-300 p-1 rounded-lg hover:bg-slate-700 transition-colors">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="px-6 py-5 space-y-4">
+
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1.5">Nombre de la Caja <span class="text-red-400">*</span></label>
+          <input type="text" x-model="editModal.form.name"
+                 class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
+                        rounded-xl px-4 py-2.5 text-slate-100 text-sm focus:outline-none
+                        focus:ring-2 focus:ring-emerald-500/20 transition-all"/>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1.5">Fecha de inicio del ciclo</label>
+          <input type="date" x-model="editModal.form.start_date"
+                 class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
+                        rounded-xl px-4 py-2.5 text-slate-100 text-sm focus:outline-none
+                        focus:ring-2 focus:ring-emerald-500/20 transition-all [color-scheme:dark]"/>
+          <p class="text-xs text-slate-500 mt-1">Define la quincena 1 — ej. 2025-11-01</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">Tasa Interna (%)</label>
+            <div class="relative">
+              <input type="number" x-model.number="editModal.form.rate_internal_pct" step="0.1" min="0" max="100"
+                     class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
+                            rounded-xl pl-4 pr-8 py-2.5 text-slate-100 text-sm focus:outline-none
+                            focus:ring-2 focus:ring-emerald-500/20 transition-all"/>
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">%</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">Tasa Externa (%)</label>
+            <div class="relative">
+              <input type="number" x-model.number="editModal.form.rate_external_pct" step="0.1" min="0" max="100"
+                     class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
+                            rounded-xl pl-4 pr-8 py-2.5 text-slate-100 text-sm focus:outline-none
+                            focus:ring-2 focus:ring-emerald-500/20 transition-all"/>
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">%</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1.5">Cuota quincenal por socio ($)</label>
+          <div class="relative">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-sm">$</span>
+            <input type="number" x-model.number="editModal.form.quota_amount" step="0.01" min="0"
+                   class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
+                          rounded-xl pl-7 pr-4 py-2.5 text-slate-100 font-mono text-sm focus:outline-none
+                          focus:ring-2 focus:ring-emerald-500/20 transition-all"/>
+          </div>
+        </div>
+
+        <div x-show="editModal.error" x-cloak
+             class="bg-red-900/20 border border-red-700/30 rounded-xl px-4 py-3">
+          <span class="text-red-400 text-sm" x-text="editModal.error"></span>
+        </div>
+      </div>
+
+      <div class="px-6 py-4 border-t border-slate-700/60 flex gap-3">
+        <button @click="editModal.open = false"
+                class="flex-1 px-4 py-2.5 text-slate-300 text-sm font-medium rounded-xl bg-slate-700/50 hover:bg-slate-700 transition-colors">
+          Cancelar
+        </button>
+        <button @click="submitEdit()"
+                :disabled="editModal.loading || !editModal.form.name.trim()"
+                class="flex-1 px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold
+                       transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-emerald-500">
+          <span x-show="!editModal.loading">Guardar Cambios</span>
+          <span x-show="editModal.loading" class="flex items-center justify-center gap-2">
+            <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>Guardando…
+          </span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- ── Nueva Caja Modal ──────────────────────────────────────────────────── -->
@@ -258,8 +380,61 @@ function settingsApp(initialCajas) {
       form: { name: '', interest_rate_internal_pct: 5, interest_rate_external_pct: 8, total_quincenas: 24, quota_amount: 0 },
     },
 
+    editModal: {
+      open: false, loading: false, error: null, caja_id: null,
+      form: { name: '', start_date: '', rate_internal_pct: 5, rate_external_pct: 8, quota_amount: 0 },
+    },
+
     init() {
       this.cajas = initialCajas;
+    },
+
+    openEdit(c) {
+      this.editModal.caja_id = c.id;
+      this.editModal.form = {
+        name:             c.name,
+        start_date:       c.start_date ?? '',
+        rate_internal_pct: +(c.interest_rate_internal * 100).toFixed(1),
+        rate_external_pct: +(c.interest_rate_external * 100).toFixed(1),
+        quota_amount:      c.quota_amount,
+      };
+      this.editModal.error = null;
+      this.editModal.loading = false;
+      this.editModal.open = true;
+    },
+
+    async submitEdit() {
+      if (!this.editModal.form.name.trim()) return;
+      this.editModal.loading = true;
+      this.editModal.error = null;
+      try {
+        const body = {
+          name:                   this.editModal.form.name.trim(),
+          interest_rate_internal: +(this.editModal.form.rate_internal_pct / 100).toFixed(4),
+          interest_rate_external: +(this.editModal.form.rate_external_pct / 100).toFixed(4),
+          quota_amount:           this.editModal.form.quota_amount || 0,
+        };
+        if (this.editModal.form.start_date) body.start_date = this.editModal.form.start_date;
+        const res = await fetch(`/api/v1/cajas/${this.editModal.caja_id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail ?? `Error ${res.status}`);
+        }
+        const updated = await res.json();
+        const idx = this.cajas.findIndex(c => c.id === this.editModal.caja_id);
+        if (idx !== -1) {
+          this.cajas[idx] = { ...this.cajas[idx], ...updated };
+        }
+        this.editModal.open = false;
+        window.__toast?.(`Caja "${updated.name}" actualizada`, 'success');
+      } catch (err) {
+        this.editModal.error = err.message;
+        this.editModal.loading = false;
+      }
     },
 
     openCreate() {

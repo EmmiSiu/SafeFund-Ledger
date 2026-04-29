@@ -33,7 +33,7 @@ def get_groups_by_caja(caja_id: int, db: Session = Depends(get_db)):
     if not caja:
         raise HTTPException(status_code=404, detail="Caja no encontrada.")
         
-    return db.query(MemberGroup).filter(MemberGroup.caja_id == caja_id).all()
+    return db.query(MemberGroup).filter(MemberGroup.caja_id == caja_id).order_by(MemberGroup.id).all()
 
 @router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_group(group_id: int, db: Session = Depends(get_db)):
@@ -41,9 +41,9 @@ def delete_group(group_id: int, db: Session = Depends(get_db)):
     if not group:
         raise HTTPException(status_code=404, detail="Grupo no encontrado.")
         
-    # Check if there are members using this group name in this caja
+    # Check if there are members using this group_id in this caja
     has_members = db.query(Member).filter(
-        Member.group == group.name,
+        Member.group_id == group.id,
         Member.caja_id == group.caja_id
     ).first()
     

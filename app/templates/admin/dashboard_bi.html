@@ -1,0 +1,504 @@
+{% extends "base.html" %}
+{% block title %}BI Dashboard — SafeFund Ledger{% endblock %}
+
+{% block content %}
+<div class="p-6 lg:p-8 max-w-[1400px]"
+     x-data='biDashboard({{ current_caja_id or "null" }}, {{ bi_json | safe }})'
+     x-init="init()">
+
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-xl font-semibold text-slate-100">BI &amp; Análisis</h1>
+      <p class="text-sm text-slate-500 mt-0.5">
+        {% if bi.caja_name %}{{ bi.caja_name }} &middot; {% endif %}{{ today }}
+      </p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap justify-end">
+      <label class="text-xs text-slate-500">Corte al:</label>
+      <input type="date" x-model="fechaCorte"
+             class="bg-slate-800/80 border border-slate-700/60 focus:border-emerald-500/60
+                    rounded-xl px-3 py-1.5 text-sm text-slate-200
+                    focus:outline-none transition-colors [color-scheme:dark]"/>
+      <button @click="recalcular()"
+              :disabled="loadingCorte"
+              class="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500
+                     text-white rounded-xl text-sm font-semibold transition-colors
+                     disabled:opacity-50 disabled:cursor-not-allowed">
+        <span x-show="!loadingCorte">Calcular Corte</span>
+        <span x-show="loadingCorte" class="flex items-center gap-2">
+          <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>Calculando…
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── KPI Cards ──────────────────────────────────────────────────────────── -->
+  <div class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+    <div class="bg-slate-800/60 rounded-2xl p-5 border border-slate-700/50">
+      <div class="flex items-start justify-between mb-3">
+        <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Capital Aportado</p>
+        <div class="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2z"/>
+          </svg>
+        </div>
+      </div>
+      <p class="text-2xl font-bold font-mono text-slate-100" x-text="'$' + fmt(corte.capital_aportado ?? bi.capital_aportado)"></p>
+      <p class="text-xs text-slate-500 mt-1.5" x-text="(corte.n_aportaciones ?? bi.n_aportaciones) + ' aportaciones'"></p>
+    </div>
+
+    <div class="bg-slate-800/60 rounded-2xl p-5 border border-slate-700/50">
+      <div class="flex items-start justify-between mb-3">
+        <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">En Préstamos</p>
+        <div class="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center">
+          <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 1v8m0 0v1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+      </div>
+      <p class="text-2xl font-bold font-mono text-slate-100" x-text="'$' + fmt(corte.capital_prestado ?? bi.capital_prestado)"></p>
+      <p class="text-xs text-slate-500 mt-1.5" x-text="(corte.n_prestamos_activos ?? bi.n_prestamos_activos) + ' préstamos activos'"></p>
+    </div>
+
+    <div class="bg-slate-800/60 rounded-2xl p-5 border border-slate-700/50">
+      <div class="flex items-start justify-between mb-3">
+        <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Disponible</p>
+        <div class="w-8 h-8 rounded-xl bg-violet-500/10 flex items-center justify-center">
+          <svg class="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+      </div>
+      <p class="text-2xl font-bold font-mono"
+         :class="(corte.capital_disponible ?? bi.capital_disponible) >= 0 ? 'text-emerald-400' : 'text-red-400'"
+         x-text="'$' + fmt(corte.capital_disponible ?? bi.capital_disponible)"></p>
+      <p class="text-xs text-slate-500 mt-1.5">Capital libre para nuevos préstamos</p>
+    </div>
+
+    <div class="bg-gradient-to-br from-emerald-900/30 to-slate-800/60 rounded-2xl p-5 border border-emerald-700/30">
+      <div class="flex items-start justify-between mb-3">
+        <p class="text-xs font-medium text-emerald-400/80 uppercase tracking-widest">Rendimiento</p>
+        <div class="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+          </svg>
+        </div>
+      </div>
+      <p class="text-2xl font-bold font-mono text-emerald-300" x-text="fmt(corte.rendimiento_pct ?? bi.rendimiento_pct) + '%'"></p>
+      <p class="text-xs text-emerald-600 mt-1.5">
+        Intereses: <span class="text-emerald-400 font-semibold" x-text="'$' + fmt(corte.intereses_cobrados ?? bi.intereses_cobrados)"></span>
+      </p>
+    </div>
+  </div>
+
+  <!-- Barra de utilización -->
+  <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 px-6 py-4 mb-6">
+    <div class="flex items-center justify-between mb-2">
+      <p class="text-sm font-medium text-slate-300">Utilización del Capital</p>
+      <p class="text-sm font-mono text-slate-400" x-text="pctUtilizacion().toFixed(1) + '%'"></p>
+    </div>
+    <div class="h-3 bg-slate-700 rounded-full overflow-hidden">
+      <div class="h-full rounded-full transition-all duration-700"
+           :class="pctUtilizacion() > 90 ? 'bg-red-500' : pctUtilizacion() > 70 ? 'bg-amber-500' : 'bg-emerald-500'"
+           :style="'width:' + Math.min(100, pctUtilizacion()) + '%'"></div>
+    </div>
+    <div class="flex justify-between text-xs text-slate-600 mt-1.5">
+      <span>Libre</span><span>Invertido en préstamos</span>
+    </div>
+  </div>
+
+  <!-- ── Gráficas fila 1: Composición + Grupos ───────────────────────────── -->
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
+
+    <!-- Donut: composición del capital -->
+    <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+      <h3 class="text-sm font-semibold text-slate-200 mb-1">Composición del Capital</h3>
+      <p class="text-xs text-slate-500 mb-4">Distribución actual de fondos</p>
+      <div class="flex items-center justify-center h-52">
+        <canvas id="donutChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Barras horizontales: aportado por grupo -->
+    <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+      <h3 class="text-sm font-semibold text-slate-200 mb-1">Aportaciones por Grupo</h3>
+      <p class="text-xs text-slate-500 mb-4">Capital acumulado total registrado por grupo</p>
+      <div x-show="bi.group_stats && bi.group_stats.length > 0" class="h-52">
+        <canvas id="gruposChart"></canvas>
+      </div>
+      <div x-show="!bi.group_stats || bi.group_stats.length === 0"
+           class="h-52 flex items-center justify-center">
+        <p class="text-slate-500 text-sm">Sin datos de aportaciones por grupo</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Gráficas fila 2: Morosidad + Ranking socios ─────────────────────── -->
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
+
+    <!-- Barras: días sin pago de interés -->
+    <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+      <h3 class="text-sm font-semibold text-slate-200 mb-1">Días sin Pago de Interés</h3>
+      <p class="text-xs text-slate-500 mb-4">Préstamos activos — rojo = en mora (&gt;35 días)</p>
+      <div x-show="mora.length > 0" class="h-52">
+        <canvas id="morosidadChart"></canvas>
+      </div>
+      <div x-show="mora.length === 0" class="h-52 flex items-center justify-center">
+        <p class="text-slate-500 text-sm">Sin préstamos activos</p>
+      </div>
+    </div>
+
+    <!-- Ranking socios por aportación -->
+    <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="text-sm font-semibold text-slate-200">Ranking de Socios</h3>
+          <p class="text-xs text-slate-500">Por total aportado — mayor a menor</p>
+        </div>
+        <div class="flex gap-1">
+          <button @click="rankingView = 'top'"
+                  :class="rankingView === 'top' ? 'bg-emerald-600 text-white' : 'bg-slate-700/60 text-slate-400 hover:text-slate-200'"
+                  class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors">Top</button>
+          <button @click="rankingView = 'bottom'"
+                  :class="rankingView === 'bottom' ? 'bg-amber-600 text-white' : 'bg-slate-700/60 text-slate-400 hover:text-slate-200'"
+                  class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors">Menores</button>
+        </div>
+      </div>
+      <div class="space-y-2 max-h-52 overflow-y-auto pr-1">
+        <template x-if="bi.member_rankings && bi.member_rankings.length > 0">
+          <div class="space-y-1.5">
+            <template x-for="(m, idx) in rankingList" :key="m.id">
+              <div class="flex items-center gap-3 px-3 py-2 rounded-xl bg-slate-900/40">
+                <span class="text-xs font-mono text-slate-500 w-5 text-right flex-shrink-0"
+                      x-text="(rankingView === 'top' ? idx + 1 : bi.member_rankings.length - idx) + '.'"></span>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-slate-200 font-medium truncate" x-text="m.name"></p>
+                  <p class="text-xs text-slate-500 truncate" x-text="m.group_name"></p>
+                </div>
+                <span class="font-mono text-sm font-semibold flex-shrink-0"
+                      :class="rankingView === 'top' ? 'text-emerald-400' : 'text-amber-400'"
+                      x-text="'$' + m.total_aportado.toLocaleString('es-MX', {minimumFractionDigits:2})"></span>
+              </div>
+            </template>
+          </div>
+        </template>
+        <template x-if="!bi.member_rankings || bi.member_rankings.length === 0">
+          <p class="text-slate-500 text-sm text-center py-8">Sin aportaciones registradas</p>
+        </template>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Tabla por grupo detallada ──────────────────────────────────────────── -->
+  <div x-show="bi.group_stats && bi.group_stats.length > 0"
+       class="bg-slate-800/60 rounded-2xl border border-slate-700/50 overflow-hidden mb-6">
+    <div class="px-5 py-4 border-b border-slate-700/60 flex items-center justify-between">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-200">Detalle por Grupo</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Total aportado y ranking interno de cada grupo</p>
+      </div>
+      <button @click="groupDetailOpen = !groupDetailOpen"
+              class="text-xs text-slate-400 hover:text-slate-200 transition-colors">
+        <span x-text="groupDetailOpen ? 'Colapsar' : 'Expandir'"></span>
+      </button>
+    </div>
+    <div x-show="groupDetailOpen" x-cloak>
+      <template x-for="g in bi.group_stats" :key="g.id">
+        <div class="border-b border-slate-700/30 last:border-0">
+          <!-- Grupo header -->
+          <div class="px-5 py-3 flex items-center justify-between bg-slate-900/20">
+            <div class="flex items-center gap-3">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20"
+                    x-text="g.name"></span>
+              <span class="text-xs text-slate-500" x-text="g.n_members + ' socio' + (g.n_members !== 1 ? 's' : '')"></span>
+            </div>
+            <span class="font-mono font-bold text-emerald-400 text-sm"
+                  x-text="'$' + g.total.toLocaleString('es-MX', {minimumFractionDigits:2})"></span>
+          </div>
+          <!-- Miembros del grupo -->
+          <div class="px-5 py-2 space-y-1">
+            <template x-for="m in g.members.slice().sort((a,b) => b.total_aportado - a.total_aportado)" :key="m.id">
+              <div class="flex items-center gap-3 py-1.5">
+                <div class="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-xs text-slate-400 flex-shrink-0"
+                     x-text="m.name.slice(0,1).toUpperCase()"></div>
+                <span class="text-sm text-slate-300 flex-1 truncate" x-text="m.name"></span>
+                <!-- Mini bar -->
+                <div class="hidden sm:flex items-center gap-2 w-32">
+                  <div class="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                    <div class="h-full bg-emerald-500/60 rounded-full"
+                         :style="'width:' + (g.total > 0 ? Math.min(100, (m.total_aportado / g.total * 100)) : 0) + '%'"></div>
+                  </div>
+                </div>
+                <span class="font-mono text-xs text-slate-400 flex-shrink-0"
+                      x-text="'$' + m.total_aportado.toLocaleString('es-MX', {minimumFractionDigits:2})"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- ── Control de Morosidad ───────────────────────────────────────────────── -->
+  <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 overflow-hidden mb-6">
+    <div class="px-5 py-4 border-b border-slate-700/60 flex items-center justify-between">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-200">Control de Morosidad</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Préstamos con más de 35 días sin pago de interés</p>
+      </div>
+      <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500/10 text-red-400 ring-1 ring-red-500/20"
+            x-text="mora.filter(m => m.en_mora).length + ' en mora'"></span>
+    </div>
+    <div x-show="mora.length === 0" class="px-6 py-10 text-center">
+      <p class="text-slate-400 text-sm">No hay préstamos activos registrados</p>
+    </div>
+    <div x-show="mora.length > 0">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700/60 bg-slate-900/40">
+            <th class="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest">Socio</th>
+            <th class="text-right px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden md:table-cell">Saldo</th>
+            <th class="text-right px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden sm:table-cell">Interés/Mes</th>
+            <th class="text-center px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest">Último Pago</th>
+            <th class="text-center px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest">Días</th>
+            <th class="text-center px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest">Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="m in mora" :key="m.loan_id">
+            <tr class="border-b border-slate-700/30 hover:bg-slate-700/20 transition-colors" :class="m.en_mora ? 'bg-red-900/5' : ''">
+              <td class="px-5 py-3.5">
+                <p class="font-medium text-slate-200" x-text="m.member_name"></p>
+                <p class="text-xs text-slate-500" x-text="'Préstamo #' + m.loan_id + ' · ' + (m.loan_type === 'internal' ? 'Interno' : 'Externo')"></p>
+              </td>
+              <td class="px-5 py-3.5 text-right font-mono text-emerald-400 hidden md:table-cell" x-text="'$' + fmt(m.outstanding_balance)"></td>
+              <td class="px-5 py-3.5 text-right font-mono text-amber-400/80 hidden sm:table-cell" x-text="'$' + fmt(m.interes_mes_actual)"></td>
+              <td class="px-5 py-3.5 text-center text-xs text-slate-400" x-text="m.ultimo_pago_interes ?? 'Sin pagos'"></td>
+              <td class="px-5 py-3.5 text-center">
+                <span class="font-mono font-semibold"
+                      :class="m.dias_sin_pago > 35 ? 'text-red-400' : m.dias_sin_pago > 25 ? 'text-amber-400' : 'text-slate-400'"
+                      x-text="m.dias_sin_pago + 'd'"></span>
+              </td>
+              <td class="px-5 py-3.5 text-center">
+                <template x-if="m.en_mora">
+                  <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-red-500/10 text-red-400 ring-1 ring-red-500/20">
+                    <span class="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>En mora
+                  </span>
+                </template>
+                <template x-if="!m.en_mora">
+                  <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>Al corriente
+                  </span>
+                </template>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Cierre de Caja ─────────────────────────────────────────────────────── -->
+  <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5" x-show="corteRealizado">
+    <h3 class="text-sm font-semibold text-slate-200 mb-4">
+      Cierre de Caja al <span class="text-emerald-400" x-text="fechaCorte"></span>
+    </h3>
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      <div class="bg-slate-900/50 rounded-xl p-4 border border-slate-700/40">
+        <p class="text-xs text-slate-500 mb-2">Capital Aportado</p>
+        <p class="font-mono font-bold text-slate-100" x-text="'$' + fmt(corte.capital_aportado)"></p>
+      </div>
+      <div class="bg-slate-900/50 rounded-xl p-4 border border-slate-700/40">
+        <p class="text-xs text-slate-500 mb-2">Intereses Cobrados</p>
+        <p class="font-mono font-bold text-emerald-400" x-text="'$' + fmt(corte.intereses_cobrados)"></p>
+      </div>
+      <div class="bg-slate-900/50 rounded-xl p-4 border border-slate-700/40">
+        <p class="text-xs text-slate-500 mb-2">Capital en Préstamos</p>
+        <p class="font-mono font-bold text-blue-400" x-text="'$' + fmt(corte.capital_prestado)"></p>
+      </div>
+      <div class="bg-slate-900/50 rounded-xl p-4 border border-slate-700/40">
+        <p class="text-xs text-slate-500 mb-2">Capital Recuperado</p>
+        <p class="font-mono font-bold text-slate-300" x-text="'$' + fmt(corte.capital_recuperado)"></p>
+      </div>
+      <div class="sm:col-span-2 rounded-xl p-4 border"
+           :class="corte.capital_disponible >= 0 ? 'bg-emerald-900/20 border-emerald-700/30' : 'bg-red-900/20 border-red-700/30'">
+        <p class="text-xs text-slate-400 mb-2">Capital Disponible en Caja</p>
+        <p class="font-mono font-bold text-2xl"
+           :class="corte.capital_disponible >= 0 ? 'text-emerald-300' : 'text-red-300'"
+           x-text="'$' + fmt(corte.capital_disponible)"></p>
+        <p class="text-xs text-slate-500 mt-1">Aportado + Intereses + Recuperado − Préstamos activos</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+function biDashboard(cajaId, biData) {
+  return {
+    cajaId,
+    bi: biData,
+    mora: biData.mora || [],
+    miembros: biData.miembros || [],
+    corte: {},
+    corteRealizado: false,
+    loadingCorte: false,
+    fechaCorte: new Date().toISOString().slice(0, 10),
+    rankingView: 'top',
+    groupDetailOpen: true,
+
+    donutChart: null,
+    gruposChart: null,
+    moraChart: null,
+
+    get rankingList() {
+      const list = this.bi.member_rankings || [];
+      return this.rankingView === 'top' ? list.slice(0, 10) : list.slice().reverse().slice(0, 10);
+    },
+
+    init() {
+      this.$nextTick(() => {
+        this.renderDonut();
+        this.renderGruposChart();
+        this.renderMoraChart();
+      });
+    },
+
+    fmt(v) {
+      return parseFloat(v ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    },
+
+    pctUtilizacion() {
+      const aportado = parseFloat(this.corte.capital_aportado ?? this.bi.capital_aportado ?? 0);
+      const prestado = parseFloat(this.corte.capital_prestado ?? this.bi.capital_prestado ?? 0);
+      return aportado > 0 ? Math.min(100, (prestado / aportado) * 100) : 0;
+    },
+
+    renderDonut() {
+      const ctx = document.getElementById('donutChart');
+      if (!ctx) return;
+      const aportado  = parseFloat(this.bi.capital_aportado ?? 0);
+      const prestado  = parseFloat(this.bi.capital_prestado ?? 0);
+      const disponible = Math.max(0, aportado - prestado);
+      const intereses  = parseFloat(this.bi.intereses_cobrados ?? 0);
+      if (this.donutChart) this.donutChart.destroy();
+      this.donutChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['En Préstamos', 'Disponible', 'Intereses Ganados'],
+          datasets: [{ data: [prestado, disponible, intereses], backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'], borderWidth: 0, hoverOffset: 8 }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: true, cutout: '68%',
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 }, padding: 16 } },
+            tooltip: { callbacks: { label: ctx => ' $' + ctx.parsed.toLocaleString('es-MX', {minimumFractionDigits:2}) } },
+          },
+        },
+      });
+    },
+
+    renderGruposChart() {
+      const ctx = document.getElementById('gruposChart');
+      if (!ctx || !this.bi.group_stats || this.bi.group_stats.length === 0) return;
+      const sorted = [...this.bi.group_stats].sort((a, b) => b.total - a.total);
+      const labels = sorted.map(g => g.name);
+      const data   = sorted.map(g => g.total);
+      const COLORS = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#06b6d4','#14b8a6','#f97316','#ec4899','#6366f1','#84cc16','#0ea5e9'];
+      if (this.gruposChart) this.gruposChart.destroy();
+      this.gruposChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Total aportado ($)',
+            data,
+            backgroundColor: COLORS.slice(0, labels.length).map(c => c + 'cc'),
+            borderColor:     COLORS.slice(0, labels.length),
+            borderWidth: 1,
+            borderRadius: 6,
+          }],
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => ' $' + ctx.parsed.x.toLocaleString('es-MX', {minimumFractionDigits:2}) } },
+          },
+          scales: {
+            x: { ticks: { color: '#475569', font: { size: 10 }, callback: v => '$' + v.toLocaleString('es-MX') }, grid: { color: '#1e293b' }, beginAtZero: true },
+            y: { ticks: { color: '#94a3b8', font: { size: 11 } }, grid: { display: false } },
+          },
+        },
+      });
+    },
+
+    renderMoraChart() {
+      const ctx = document.getElementById('morosidadChart');
+      if (!ctx || this.mora.length === 0) return;
+      const top    = this.mora.slice(0, 12);
+      const labels = top.map(m => m.member_name.split(' ')[0]);
+      const dias   = top.map(m => m.dias_sin_pago);
+      const colors = dias.map(d => d > 35 ? '#ef4444cc' : d > 25 ? '#f59e0bcc' : '#10b981cc');
+      if (this.moraChart) this.moraChart.destroy();
+      this.moraChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{ label: 'Días sin pago', data: dias, backgroundColor: colors, borderRadius: 6 }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.parsed.y + ' días' } } },
+          scales: {
+            x: { ticks: { color: '#64748b', font: { size: 11 } }, grid: { display: false } },
+            y: { ticks: { color: '#64748b', font: { size: 11 } }, grid: { color: '#1e293b' }, beginAtZero: true,
+                 plugins: { annotation: { annotations: { mora: { type: 'line', yMin: 35, yMax: 35, borderColor: '#ef4444', borderWidth: 1, borderDash: [4,4] } } } } },
+          },
+        },
+      });
+    },
+
+    async recalcular() {
+      if (!this.cajaId) return;
+      this.loadingCorte = true;
+      try {
+        const res = await fetch(`/api/v1/aportaciones/capital-disponible?caja_id=${this.cajaId}`);
+        if (!res.ok) throw new Error('Error al calcular');
+        const base = await res.json();
+        const res2 = await fetch(`/api/v1/dashboard/bi-corte?caja_id=${this.cajaId}&fecha_corte=${this.fechaCorte}`);
+        if (res2.ok) {
+          this.corte = await res2.json();
+        } else {
+          this.corte = {
+            capital_aportado: base.capital_aportado_total,
+            capital_prestado: base.capital_en_prestamos,
+            intereses_cobrados: base.intereses_cobrados,
+            capital_disponible: base.capital_disponible,
+            capital_recuperado: 0,
+            rendimiento_pct: base.rendimiento_pct,
+            n_aportaciones: base.n_aportaciones,
+            n_prestamos_activos: base.n_prestamos_activos,
+          };
+        }
+        this.corteRealizado = true;
+      } catch (e) {
+        window.__toast?.('Error al calcular corte', 'error');
+      } finally {
+        this.loadingCorte = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

@@ -155,3 +155,19 @@ def get_chart_data(caja_id: int = Query(...), db: Session = Depends(get_db)):
         interest_data.append(round(cum_i, 2))
 
     return {"labels": labels, "savings": savings_data, "interest": interest_data}
+
+
+@router.get("/bi-corte")
+def get_bi_corte(
+    caja_id: int = Query(...),
+    fecha_corte: date = Query(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Métricas de capital para un corte de caja en una fecha específica.
+    Usa loan_engine para cálculo retrospectivo.
+    """
+    from app.services.loan_engine import get_capital_metrics
+    if not db.get(CajaConfig, caja_id):
+        raise HTTPException(status_code=404, detail="Caja no encontrada.")
+    return get_capital_metrics(caja_id, fecha_corte, db)

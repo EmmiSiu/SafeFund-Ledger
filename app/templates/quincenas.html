@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+{% block title %}Quincenas — SafeFund Ledger{% endblock %}
+
+{% block content %}
+<div class="p-6 lg:p-8"
+     x-data='quincenasApp({{ current_caja_id or "null" }}, {{ caja_json | safe }})'
+     x-init="init()">
+
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-xl font-semibold text-slate-100">Panel de Quincenas</h1>
+      <p class="text-sm text-slate-500 mt-0.5" x-text="cajaNombre + ' · ' + (data ? data.caja.total_quincenas + ' quincenas' : '—')"></p>
+    </div>
+
+    <!-- Vista toggle -->
+    <div x-show="data" class="flex items-center gap-3">
+      <div class="flex bg-slate-800 border border-slate-700/60 rounded-xl p-1 gap-1">
+        <button @click="vista='ideal'"
+                :class="vista==='ideal' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'"
+                class="px-4 py-1.5 rounded-lg text-sm font-medium transition-all">
+          Vista Ideal
+        </button>
+        <button @click="vista='real'"
+                :class="vista==='real' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-slate-200'"
+                class="px-4 py-1.5 rounded-lg text-sm font-medium transition-all">
+          Vista Real
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sin start_date configurado -->
+  <div x-show="!cajaInfo || !cajaInfo.start_date" x-cloak
+       class="bg-slate-800/60 rounded-2xl border border-amber-700/30 p-12 text-center">
+    <div class="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
+      <svg class="w-7 h-7 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+    </div>
+    <p class="text-slate-200 font-semibold text-base mb-1">Fecha de inicio no configurada</p>
+    <p class="text-slate-500 text-sm mb-5">Edita la caja en Configuración para establecer la fecha de inicio del ciclo y la cuota quincenal.</p>
+    <a href="/settings"
+       class="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold transition-colors">
+      Ir a Configuración →
+    </a>
+  </div>
+
+  <!-- Loading -->
+  <div x-show="cajaInfo && cajaInfo.start_date && loading" class="flex items-center justify-center py-20">
+    <div class="flex flex-col items-center gap-3">
+      <div class="flex gap-1.5">
+        <span class="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style="animation-delay:0ms"></span>
+        <span class="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style="animation-delay:150ms"></span>
+        <span class="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style="animation-delay:300ms"></span>
+      </div>
+      <p class="text-xs text-slate-500">Cargando datos de quincenas…</p>
+    </div>
+  </div>
+
+  <!-- Panel principal -->
+  <div x-show="data && !loading" x-cloak>
+
+    <!-- KPIs de capital -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+
+      <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 px-4 py-4">
+        <p class="text-xs text-slate-500 mb-1.5">Quincena Actual</p>
+        <p class="text-2xl font-bold font-mono text-slate-100"
+           x-text="data ? 'Q' + data.caja.quincena_actual : '—'"></p>
+        <p class="text-xs text-slate-500 mt-1"
+           x-text="data ? 'de ' + data.caja.total_quincenas : ''"></p>
+      </div>
+
+      <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 px-4 py-4">
+        <p class="text-xs text-slate-500 mb-1.5">Cuota Quincenal</p>
+        <p class="text-2xl font-bold font-mono text-emerald-400"
+           x-text="data ? '$' + fmt(data.caja.quota_amount) : '—'"></p>
+        <p class="text-xs text-slate-500 mt-1" x-text="data ? data.resumen.n_socios_dentro + ' socios internos' : ''"></p>
+      </div>
+
+      <div class="rounded-2xl border px-4 py-4"
+           :class="vista === 'ideal' ? 'bg-emerald-900/20 border-emerald-700/30' : 'bg-slate-800/60 border-slate-700/50'">
+        <p class="text-xs mb-1.5"
+           :class="vista === 'ideal' ? 'text-emerald-400/80' : 'text-slate-500'">Capital Ideal</p>
+        <p class="text-2xl font-bold font-mono"
+           :class="vista === 'ideal' ? 'text-emerald-300' : 'text-slate-400'"
+           x-text="data ? '$' + fmt(data.resumen.capital_ideal) : '—'"></p>
+        <p class="text-xs mt-1" :class="vista === 'ideal' ? 'text-emerald-700' : 'text-slate-600'">
+          Si todos pagaron a tiempo
+        </p>
+      </div>
+
+      <div class="rounded-2xl border px-4 py-4"
+           :class="vista === 'real' ? 'bg-amber-900/20 border-amber-700/30' : 'bg-slate-800/60 border-slate-700/50'">
+        <p class="text-xs mb-1.5"
+           :class="vista === 'real' ? 'text-amber-400/80' : 'text-slate-500'">Capital Real</p>
+        <p class="text-2xl font-bold font-mono"
+           :class="vista === 'real' ? 'text-amber-300' : 'text-slate-400'"
+           x-text="data ? '$' + fmt(capitalReal()) : '—'"></p>
+        <p class="text-xs mt-1" :class="vista === 'real' ? 'text-amber-700' : 'text-slate-600'"
+           x-text="data ? pendientesCount() + ' pagos pendientes' : ''"></p>
+      </div>
+    </div>
+
+    <!-- Leyenda -->
+    <div class="flex items-center gap-4 mb-4 text-xs text-slate-400">
+      <div class="flex items-center gap-1.5">
+        <div class="w-4 h-4 rounded bg-emerald-600/80"></div>
+        <span>Pagado</span>
+      </div>
+      <div x-show="vista === 'real'" class="flex items-center gap-1.5">
+        <div class="w-4 h-4 rounded bg-amber-500/80"></div>
+        <span>Pendiente (click para alternar)</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <div class="w-4 h-4 rounded bg-slate-700/80"></div>
+        <span>Aún no aplica</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <div class="w-4 h-4 rounded bg-blue-600/50 border border-blue-500/50"></div>
+        <span>Quincena actual</span>
+      </div>
+    </div>
+
+    <!-- Grid de quincenas -->
+    <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 overflow-hidden">
+
+      <!-- Scroll container -->
+      <div class="overflow-x-auto">
+        <table class="text-xs border-separate border-spacing-0">
+          <thead>
+            <tr>
+              <!-- Columna de nombre -->
+              <th class="sticky left-0 z-10 bg-slate-900/95 px-4 py-3 text-left font-medium text-slate-400 uppercase tracking-widest min-w-[160px] border-b border-slate-700/60 border-r border-slate-700/40">
+                Socio
+              </th>
+              <!-- Columnas de quincenas -->
+              <template x-for="q in (data ? data.quincenas : [])" :key="q.num">
+                <th class="px-1 py-3 text-center font-medium border-b border-slate-700/60 min-w-[36px]"
+                    :class="q.num === data.caja.quincena_actual
+                      ? 'text-blue-400 bg-blue-900/20'
+                      : q.pasada ? 'text-slate-500' : 'text-slate-700'">
+                  <div x-text="q.label"></div>
+                  <div class="text-slate-600 font-normal mt-0.5 text-[9px] leading-none"
+                       x-text="q.fecha.slice(5)"></div>
+                </th>
+              </template>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="(member, mi) in (data ? data.members : [])" :key="member.id">
+              <tr :class="mi % 2 === 0 ? 'bg-slate-800/30' : 'bg-slate-800/10'">
+                <!-- Nombre sticky -->
+                <td class="sticky left-0 z-10 px-4 py-2 border-r border-slate-700/40 border-b border-slate-700/20"
+                    :class="mi % 2 === 0 ? 'bg-slate-900/90' : 'bg-slate-900/80'">
+                  <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0 text-[10px] font-semibold text-slate-300"
+                         x-text="member.name.slice(0,2).toUpperCase()"></div>
+                    <span class="text-slate-300 font-medium truncate max-w-[110px]" x-text="member.name"></span>
+                    <span x-show="member.member_type === 'fuera'"
+                          class="text-[9px] px-1 py-0.5 rounded bg-purple-500/10 text-purple-400 ring-1 ring-purple-500/20 flex-shrink-0">
+                      ext
+                    </span>
+                  </div>
+                </td>
+                <!-- Celdas de quincena -->
+                <template x-for="q in (data ? data.quincenas : [])" :key="q.num">
+                  <td class="px-1 py-2 text-center border-b border-slate-700/20"
+                      :class="q.num === data.caja.quincena_actual ? 'bg-blue-900/10' : ''">
+                    <template x-if="!q.pasada">
+                      <!-- Futura -->
+                      <div class="w-6 h-6 rounded mx-auto bg-slate-700/40 border border-slate-700/30"></div>
+                    </template>
+                    <template x-if="q.pasada && vista === 'ideal'">
+                      <!-- Ideal: siempre verde -->
+                      <div class="w-6 h-6 rounded mx-auto bg-emerald-600/80 border border-emerald-500/40"
+                           :title="'Q' + q.num + ' — ' + member.name"></div>
+                    </template>
+                    <template x-if="q.pasada && vista === 'real'">
+                      <!-- Real: toggle verde/amarillo -->
+                      <button @click="toggleCell(member.id, q.num)"
+                              class="w-6 h-6 rounded mx-auto transition-all duration-150 hover:scale-110 active:scale-95 border"
+                              :class="isPendiente(member.id, q.num)
+                                ? 'bg-amber-500/80 border-amber-400/50 hover:bg-amber-400/80'
+                                : 'bg-emerald-600/80 border-emerald-500/40 hover:bg-emerald-500/80'"
+                              :title="(isPendiente(member.id, q.num) ? 'Pendiente' : 'Pagado') + ' — ' + member.name + ' Q' + q.num">
+                      </button>
+                    </template>
+                  </td>
+                </template>
+              </tr>
+            </template>
+
+            <!-- Sin miembros -->
+            <tr x-show="data && data.members.length === 0">
+              <td :colspan="2 + (data ? data.quincenas.length : 0)"
+                  class="px-6 py-12 text-center">
+                <p class="text-slate-400">No hay socios activos en esta caja</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer del grid -->
+      <div x-show="data" class="px-5 py-3 border-t border-slate-700/40 bg-slate-900/20 flex flex-wrap gap-4 justify-between items-center">
+        <div class="text-xs text-slate-500 flex gap-4">
+          <span x-text="data ? data.resumen.n_socios + ' socios' : ''"></span>
+          <span x-show="vista === 'real' && pendientesCount() > 0"
+                class="text-amber-400" x-text="pendientesCount() + ' pendientes'"></span>
+        </div>
+        <div class="flex items-center gap-3 text-xs">
+          <span class="text-slate-500">
+            <span :class="vista === 'ideal' ? 'text-emerald-400 font-semibold' : 'text-slate-500'">Ideal</span>:
+            <span class="font-mono" x-text="data ? '$' + fmt(data.resumen.capital_ideal) : '—'"></span>
+          </span>
+          <span class="text-slate-700">|</span>
+          <span class="text-slate-500">
+            <span :class="vista === 'real' ? 'text-amber-400 font-semibold' : 'text-slate-500'">Real</span>:
+            <span class="font-mono" x-text="data ? '$' + fmt(capitalReal()) : '—'"></span>
+          </span>
+          <span class="text-slate-700">|</span>
+          <span class="text-slate-500">
+            Diferencia: <span class="font-mono"
+                              :class="(data ? data.resumen.capital_ideal - capitalReal() : 0) > 0 ? 'text-red-400' : 'text-slate-400'"
+                              x-text="data ? '-$' + fmt(data.resumen.capital_ideal - capitalReal()) : '—'"></span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Error -->
+  <div x-show="error" x-cloak
+       class="mt-4 bg-red-900/20 border border-red-700/30 rounded-xl px-5 py-4">
+    <p class="text-red-400 text-sm" x-text="error"></p>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function quincenasApp(cajaId, cajaInfo) {
+  return {
+    cajaId,
+    cajaInfo,
+    cajaNombre: cajaInfo ? cajaInfo.name : '',
+    data: null,
+    loading: false,
+    error: null,
+    vista: 'real',
+
+    // Set local de (member_id, quincena_num) marcados como pendientes
+    pendientesSet: new Set(),
+
+    init() {
+      if (cajaInfo && cajaInfo.start_date) {
+        this.cargarDatos();
+      }
+    },
+
+    async cargarDatos() {
+      this.loading = true;
+      this.error = null;
+      try {
+        const res = await fetch(`/api/v1/quincenas/data?caja_id=${this.cajaId}`);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail ?? `Error ${res.status}`);
+        }
+        this.data = await res.json();
+        // Reconstruir el Set de pendientes
+        this.pendientesSet = new Set(
+          this.data.pendientes.map(p => `${p.member_id}:${p.quincena_num}`)
+        );
+      } catch (e) {
+        this.error = e.message;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    isPendiente(memberId, quincenaNum) {
+      return this.pendientesSet.has(`${memberId}:${quincenaNum}`);
+    },
+
+    pendientesCount() {
+      if (!this.data) return 0;
+      const currentQ = this.data.caja.quincena_actual;
+      let count = 0;
+      for (const key of this.pendientesSet) {
+        const [, qNum] = key.split(':').map(Number);
+        if (qNum <= currentQ) count++;
+      }
+      return count;
+    },
+
+    capitalReal() {
+      if (!this.data) return 0;
+      const cuota = this.data.caja.quota_amount;
+      const ideal = this.data.resumen.capital_ideal;
+      // Solo contar pendientes de socios internos en quincenas pasadas
+      const currentQ = this.data.caja.quincena_actual;
+      const internos = new Set(
+        this.data.members
+          .filter(m => m.member_type === 'dentro')
+          .map(m => m.id)
+      );
+      let pendientesPagos = 0;
+      for (const key of this.pendientesSet) {
+        const [mid, qNum] = key.split(':').map(Number);
+        if (internos.has(mid) && qNum <= currentQ) pendientesPagos++;
+      }
+      return Math.max(0, ideal - pendientesPagos * cuota);
+    },
+
+    async toggleCell(memberId, quincenaNum) {
+      const key = `${memberId}:${quincenaNum}`;
+      // Optimistic update
+      if (this.pendientesSet.has(key)) {
+        this.pendientesSet.delete(key);
+      } else {
+        this.pendientesSet.add(key);
+      }
+      // Force Alpine reactivity
+      this.pendientesSet = new Set(this.pendientesSet);
+
+      try {
+        const res = await fetch('/api/v1/quincenas/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            member_id:    memberId,
+            caja_id:      this.cajaId,
+            quincena_num: quincenaNum,
+          }),
+        });
+        if (!res.ok) {
+          // Revert on error
+          if (this.pendientesSet.has(key)) {
+            this.pendientesSet.delete(key);
+          } else {
+            this.pendientesSet.add(key);
+          }
+          this.pendientesSet = new Set(this.pendientesSet);
+          const err = await res.json().catch(() => ({}));
+          window.__toast?.(err.detail ?? 'Error al actualizar', 'error');
+        }
+      } catch {
+        // Revert silently
+        if (this.pendientesSet.has(key)) {
+          this.pendientesSet.delete(key);
+        } else {
+          this.pendientesSet.add(key);
+        }
+        this.pendientesSet = new Set(this.pendientesSet);
+      }
+    },
+
+    fmt(v) {
+      return parseFloat(v ?? 0).toLocaleString('es-MX', {
+        minimumFractionDigits: 2, maximumFractionDigits: 2
+      });
+    },
+  };
+}
+</script>
+{% endblock %}

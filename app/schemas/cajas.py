@@ -13,12 +13,23 @@ class CajaConfigCreate(BaseModel):
     interest_rate_external: Decimal = Field(default=Decimal("0.08"), ge=0, le=1)
     total_quincenas: int = Field(default=24, ge=1)
     quota_amount: Decimal = Field(default=Decimal("0.00"), ge=0)
+    start_date: Optional[date] = None
+
+
+class CajaConfigUpdate(BaseModel):
+    """Campos editables de una caja. Todos opcionales."""
+    name: Optional[str] = Field(None, max_length=100)
+    interest_rate_internal: Optional[Decimal] = Field(None, ge=0, le=1)
+    interest_rate_external: Optional[Decimal] = Field(None, ge=0, le=1)
+    quota_amount: Optional[Decimal] = Field(None, ge=0)
+    start_date: Optional[date] = None
 
 
 class CajaConfigRead(CajaConfigCreate):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    start_date: Optional[date] = None
     created_at: datetime
 
 

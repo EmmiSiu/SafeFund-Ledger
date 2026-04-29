@@ -8,7 +8,8 @@
       "Bash(alembic upgrade:*)",
       "Bash(source /c/Users/emiro/OneDrive/Escritorio/SafeFund-Ledger/venv/Scripts/activate)",
       "Bash(docker compose:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(venv/Scripts/python.exe -c \":*)"
     ]
   }
 }

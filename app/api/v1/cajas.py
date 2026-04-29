@@ -9,6 +9,7 @@ from app.models.base import CajaConfig, Loan, Member
 from app.schemas.cajas import (
     CajaConfigCreate,
     CajaConfigRead,
+    CajaConfigUpdate,
     CajaInitializeRequest,
     CajaInitializeResponse,
 )
@@ -25,6 +26,32 @@ def create_caja(payload: CajaConfigCreate, db: Session = Depends(get_db)):
         )
     caja = CajaConfig(**payload.model_dump())
     db.add(caja)
+    db.commit()
+    db.refresh(caja)
+    return caja
+
+
+@router.patch("/{caja_id}", response_model=CajaConfigRead)
+def update_caja(caja_id: int, payload: CajaConfigUpdate, db: Session = Depends(get_db)):
+    """Edita nombre, tasas, cuota y/o fecha de inicio de una caja."""
+    caja = db.get(CajaConfig, caja_id)
+    if not caja:
+        raise HTTPException(status_code=404, detail="Caja no encontrada.")
+    if payload.name is not None:
+        conflict = db.query(CajaConfig).filter(
+            CajaConfig.name == payload.name, CajaConfig.id != caja_id
+        ).first()
+        if conflict:
+            raise HTTPException(status_code=409, detail=f"Ya existe una caja con el nombre '{payload.name}'.")
+        caja.name = payload.name
+    if payload.interest_rate_internal is not None:
+        caja.interest_rate_internal = payload.interest_rate_internal
+    if payload.interest_rate_external is not None:
+        caja.interest_rate_external = payload.interest_rate_external
+    if payload.quota_amount is not None:
+        caja.quota_amount = payload.quota_amount
+    if payload.start_date is not None:
+        caja.start_date = payload.start_date
     db.commit()
     db.refresh(caja)
     return caja

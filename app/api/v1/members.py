@@ -30,6 +30,10 @@ def get_member(member_id: int, db: Session = Depends(get_db)):
 def create_member(payload: MemberCreate, db: Session = Depends(get_db)):
     if not db.get(CajaConfig, payload.caja_id):
         raise HTTPException(status_code=404, detail="Caja no encontrada.")
+    
+    from app.models.base import MemberGroup
+    if not db.get(MemberGroup, payload.group_id):
+        raise HTTPException(status_code=404, detail="Grupo no encontrado.")
     member = Member(**payload.model_dump())
     db.add(member)
     db.commit()

@@ -212,9 +212,6 @@ function groupsApp(cajaId, initialGroups) {
         newGroup.members_count = 0;
         this.groups.push(newGroup);
         
-        // Sort alphabetically
-        this.groups.sort((a, b) => a.name.localeCompare(b.name));
-        
         this.closeModal();
         window.__toast?.(`Grupo "${newGroup.name}" creado exitosamente`, 'success');
 
