@@ -357,7 +357,7 @@ def al_corriente_bulk(payload: AlCorrienteBulkRequest, db: Session = Depends(get
     processed = 0
 
     for m in members:
-        if m.id in excluded_set:
+        if m.id in excluded_set or m.member_type != "dentro":
             continue
 
         # Obtener todas las quincenas registradas de este socio de una sola vez
@@ -384,20 +384,6 @@ def al_corriente_bulk(payload: AlCorrienteBulkRequest, db: Session = Depends(get
         # 2. Crear o corregir aportaciones _cuota_ para Q1..quincena_hasta
         if m.member_type == "dentro":
             _sync_aportaciones(m.id, payload.caja_id, cuota, quincena_hasta, db)
-
-        # 2. Revertir quincenas posteriores si se regularizó de más
-        a_borrar = [r for r in registradas if r.quincena_num > quincena_hasta]
-        for r in a_borrar:
-            apo_relacionada = db.query(Aportacion).filter(
-                Aportacion.member_id == m.id,
-                Aportacion.caja_id == payload.caja_id,
-                Aportacion.quincena == f"Q{r.quincena_num}",
-                Aportacion.notas == "_cuota_",
-            ).first()
-            if apo_relacionada:
-                db.delete(apo_relacionada)
-            db.delete(r)
-            deleted_count += 1
 
         processed += 1
 
