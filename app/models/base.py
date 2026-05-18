@@ -64,6 +64,10 @@ class Member(Base):
     member_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default="dentro", server_default="dentro"
     )
+    # Cuota quincenal personal — lo que aporta cada quincena (puede diferir de caja.quota_amount)
+    quota_personal: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0.00"
+    )
     # Saldo acumulado de ahorros quincenales
     savings_balance: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0.00")

@@ -15,6 +15,7 @@
       }
     }
   </script>
+  <script src="https://unpkg.com/htmx.org@2.0.3/dist/htmx.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <style>
     [x-cloak] { display: none !important; }
@@ -225,6 +226,18 @@ function toastSystem() {
     },
   };
 }
+</script>
+<script>
+/**
+ * Alpine ↔ HTMX bridge: initialize Alpine components in HTMX-swapped content.
+ * Without this, any x-data in HTMX partials (e.g. gestionar drawer) won't be
+ * picked up by Alpine and all reactive properties will throw ReferenceErrors.
+ */
+document.addEventListener('htmx:afterSettle', function(evt) {
+  if (window.Alpine && evt.detail.elt) {
+    Alpine.initTree(evt.detail.elt);
+  }
+});
 </script>
 {% block scripts %}{% endblock %}
 </body>

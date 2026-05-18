@@ -3,6 +3,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
@@ -42,6 +43,108 @@ def list_loans(
         data.member_name = loan.member.name if loan.member else ""
         result.append(data)
     return result
+
+
+@router.get("/metrics")
+def get_loan_metrics(caja_id: int = Query(...), db: Session = Depends(get_db)):
+    """Métricas globales de la cartera de préstamos para el dashboard."""
+    from sqlalchemy import func
+    from app.models.base import Member
+
+    today = date.today()
+    start_of_month = today.replace(day=1)
+
+    active_loans = (
+        db.query(Loan)
+        .filter(Loan.caja_id == caja_id, Loan.status == "active")
+        .all()
+    )
+    n_activos = len(active_loans)
+    n_liquidados = (
+        db.query(func.count(Loan.id))
+        .filter(Loan.caja_id == caja_id, Loan.status == "paid")
+        .scalar() or 0
+    )
+
+    total_prestado = sum(Decimal(str(l.initial_amount)) for l in active_loans)
+    saldo_insoluto = sum(Decimal(str(l.outstanding_balance)) for l in active_loans)
+
+    ganancias_raw = (
+        db.query(func.sum(Transaction.amount))
+        .join(Loan, Transaction.loan_id == Loan.id)
+        .filter(
+            Loan.caja_id == caja_id,
+            Transaction.transaction_type == "interest_payment",
+        )
+        .scalar() or Decimal("0")
+    )
+    ganancias_mes_raw = (
+        db.query(func.sum(Transaction.amount))
+        .join(Loan, Transaction.loan_id == Loan.id)
+        .filter(
+            Loan.caja_id == caja_id,
+            Transaction.transaction_type == "interest_payment",
+            Transaction.transaction_date >= start_of_month,
+        )
+        .scalar() or Decimal("0")
+    )
+
+    capital_interno = sum(
+        Decimal(str(l.outstanding_balance)) for l in active_loans if l.loan_type == "internal"
+    )
+    capital_externo = sum(
+        Decimal(str(l.outstanding_balance)) for l in active_loans if l.loan_type == "external"
+    )
+    total_cartera = capital_interno + capital_externo
+    pct_interno = float(
+        (capital_interno / total_cartera * 100).quantize(CENT, rounding=ROUND_HALF_UP)
+    ) if total_cartera > 0 else 0.0
+    pct_externo = float(
+        (capital_externo / total_cartera * 100).quantize(CENT, rounding=ROUND_HALF_UP)
+    ) if total_cartera > 0 else 0.0
+
+    # Ranking socios por intereses generados (all loans, not just active)
+    member_interest_rows = (
+        db.query(Transaction.member_id, func.sum(Transaction.amount).label("total"))
+        .join(Loan, Transaction.loan_id == Loan.id)
+        .filter(
+            Loan.caja_id == caja_id,
+            Transaction.transaction_type == "interest_payment",
+        )
+        .group_by(Transaction.member_id)
+        .order_by(func.sum(Transaction.amount).desc())
+        .limit(10)
+        .all()
+    )
+    ranking = []
+    for row in member_interest_rows:
+        m = db.get(Member, row.member_id)
+        if not m:
+            continue
+        m_active = [l for l in active_loans if l.member_id == row.member_id]
+        ranking.append({
+            "member_id": row.member_id,
+            "member_name": m.name,
+            "total_intereses": float(Decimal(str(row.total)).quantize(CENT, rounding=ROUND_HALF_UP)),
+            "outstanding_balance": float(
+                sum(Decimal(str(l.outstanding_balance)) for l in m_active).quantize(CENT, rounding=ROUND_HALF_UP)
+            ),
+            "n_loans_activos": len(m_active),
+        })
+
+    return {
+        "total_prestado":      float(total_prestado.quantize(CENT, rounding=ROUND_HALF_UP)),
+        "saldo_insoluto_total": float(saldo_insoluto.quantize(CENT, rounding=ROUND_HALF_UP)),
+        "ganancias_acumuladas": float(Decimal(str(ganancias_raw)).quantize(CENT, rounding=ROUND_HALF_UP)),
+        "ganancias_mes":        float(Decimal(str(ganancias_mes_raw)).quantize(CENT, rounding=ROUND_HALF_UP)),
+        "n_activos":    n_activos,
+        "n_liquidados": n_liquidados,
+        "capital_interno": float(capital_interno.quantize(CENT, rounding=ROUND_HALF_UP)),
+        "capital_externo": float(capital_externo.quantize(CENT, rounding=ROUND_HALF_UP)),
+        "pct_interno": pct_interno,
+        "pct_externo": pct_externo,
+        "ranking_socios": ranking,
+    }
 
 
 @router.get("/{loan_id}", response_model=LoanRead)
@@ -170,6 +273,40 @@ def get_interes_acumulado(
             for p in result.periodos
         ],
     )
+
+
+class FechaInicioUpdate(BaseModel):
+    start_date: date
+
+
+@router.patch("/{loan_id}/fecha-inicio", response_model=LoanRead)
+def update_fecha_inicio(loan_id: int, payload: FechaInicioUpdate, db: Session = Depends(get_db)):
+    """Corrige la fecha de inicio de un préstamo (registros retroactivos)."""
+    loan = db.get(Loan, loan_id)
+    if not loan:
+        raise HTTPException(status_code=404, detail="Préstamo no encontrado.")
+    loan.start_date = payload.start_date
+    db.commit()
+    db.refresh(loan)
+    data = LoanRead.model_validate(loan)
+    m = db.get(Member, loan.member_id)
+    data.member_name = m.name if m else ""
+    return data
+
+
+@router.delete("/{loan_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_loan(loan_id: int, db: Session = Depends(get_db)):
+    """Elimina un préstamo y todas sus transacciones asociadas."""
+    loan = db.get(Loan, loan_id)
+    if not loan:
+        raise HTTPException(status_code=404, detail="Préstamo no encontrado.")
+    try:
+        db.query(Transaction).filter(Transaction.loan_id == loan_id).delete()
+        db.delete(loan)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al eliminar: {exc}")
 
 
 @router.post("/{loan_id}/abono-capital", response_model=AbonoCapitalResponse, status_code=status.HTTP_201_CREATED)

@@ -1,0 +1,356 @@
+{% if error and not loan %}
+<div class="p-6 text-red-400 text-sm">{{ error }}</div>
+{% else %}
+{% set fmt = "{:,.2f}".format %}
+<div x-data='gestionarPanel({{ loan_json | safe }}, "{{ today }}")'
+     x-init="init()"
+     class="h-full flex flex-col">
+
+  <!-- Header -->
+  <div class="px-6 py-4 border-b border-slate-700/60 flex-shrink-0">
+    <div class="flex items-start justify-between">
+      <div>
+        <h2 class="text-base font-semibold text-slate-100">{{ loan.member_name }}</h2>
+        <div class="flex items-center gap-2 mt-1">
+          <span class="text-xs text-slate-500">Préstamo #{{ loan.id }}</span>
+          <span class="text-slate-700">·</span>
+          <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
+                       {% if loan.loan_type == 'internal' %}bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20
+                       {% else %}bg-purple-500/10 text-purple-400 ring-1 ring-purple-500/20{% endif %}">
+            {{ 'Interno' if loan.loan_type == 'internal' else 'Externo' }}
+          </span>
+          <span class="text-xs text-slate-500">{{ (loan.interest_rate * 100) | round(1) }}% / mes</span>
+          <span class="text-slate-700">·</span>
+          <span class="text-xs text-slate-500">Inicio: {{ loan.start_date }}</span>
+        </div>
+      </div>
+      <button @click="$dispatch('close-gestionar')"
+              class="p-1.5 text-slate-500 hover:text-slate-300 rounded-lg hover:bg-slate-700 transition-colors">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- KPI mini cards -->
+  <div class="px-6 py-4 grid grid-cols-3 gap-3 flex-shrink-0 border-b border-slate-700/40">
+    <div class="bg-slate-900/60 rounded-xl p-3 border border-slate-700/40">
+      <p class="text-xs text-slate-500 mb-1">Saldo Insoluto</p>
+      <p class="font-mono font-bold text-emerald-400 text-base leading-none"
+         x-text="'$' + fmt(loan.outstanding_balance)"></p>
+    </div>
+    <div class="bg-amber-900/20 rounded-xl p-3 border border-amber-700/20">
+      <p class="text-xs text-amber-500/70 mb-1">Interés / Mes</p>
+      <p class="font-mono font-bold text-amber-400 text-base leading-none"
+         x-text="'$' + fmt(loan.interes_mes)"></p>
+    </div>
+    <div class="bg-slate-900/40 rounded-xl p-3 border border-slate-700/30">
+      <p class="text-xs text-slate-500 mb-1">Acumulado a Hoy</p>
+      <p class="font-mono font-bold text-slate-300 text-base leading-none"
+         x-text="'$' + fmt(loan.interes_acumulado)"></p>
+    </div>
+  </div>
+
+  <!-- Scrollable body -->
+  <div class="flex-1 overflow-y-auto">
+
+    <!-- Formulario de Registro de Movimiento -->
+    <div class="px-6 py-5 border-b border-slate-700/40">
+      <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+        </svg>
+        Registrar Movimiento
+      </h3>
+
+      <!-- Modo -->
+      <div class="flex gap-2 mb-4">
+        <button @click="form.mode = 'interest'"
+                :class="form.mode === 'interest'
+                  ? 'bg-amber-600 text-white ring-1 ring-amber-500/50'
+                  : 'bg-slate-700/60 text-slate-400 hover:bg-slate-700'"
+                class="flex-1 py-2 rounded-xl text-xs font-semibold transition-colors">
+          Pagar Interés
+        </button>
+        <button @click="form.mode = 'capital'"
+                :class="form.mode === 'capital'
+                  ? 'bg-emerald-600 text-white ring-1 ring-emerald-500/50'
+                  : 'bg-slate-700/60 text-slate-400 hover:bg-slate-700'"
+                class="flex-1 py-2 rounded-xl text-xs font-semibold transition-colors">
+          Abono a Capital
+        </button>
+        <button @click="form.mode = 'libre'"
+                :class="form.mode === 'libre'
+                  ? 'bg-blue-600 text-white ring-1 ring-blue-500/50'
+                  : 'bg-slate-700/60 text-slate-400 hover:bg-slate-700'"
+                class="flex-1 py-2 rounded-xl text-xs font-semibold transition-colors">
+          Pago Libre
+        </button>
+      </div>
+
+      <!-- Descripción del modo -->
+      <p class="text-xs text-slate-500 mb-4 leading-relaxed"
+         x-text="modeDescription()"></p>
+
+      <!-- Grid fecha + monto -->
+      <div class="grid grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Fecha del Movimiento</label>
+          <input type="date" x-model="form.date"
+                 class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
+                        rounded-xl px-3 py-2 text-slate-100 text-sm focus:outline-none transition-all
+                        [color-scheme:dark]"/>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5"
+                 x-text="form.mode === 'capital' ? 'Monto a Abonar' : form.mode === 'interest' ? 'Monto del Interés' : 'Monto Total'"></label>
+          <div class="relative">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-sm">$</span>
+            <input type="number" x-model.number="form.amount" step="0.01" min="0.01"
+                   @input="calcBreakdown()"
+                   class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
+                          rounded-xl pl-7 pr-3 py-2 text-slate-100 font-mono text-sm focus:outline-none
+                          focus:ring-2 focus:ring-emerald-500/20 transition-all placeholder-slate-600"
+                   placeholder="0.00"
+                   x-ref="amountInput"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notas -->
+      <div class="mb-4">
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Notas (opcional)</label>
+        <input type="text" x-model="form.notes" placeholder="Referencia, concepto…"
+               class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
+                      rounded-xl px-3 py-2 text-slate-100 text-sm focus:outline-none transition-all
+                      placeholder-slate-600"/>
+      </div>
+
+      <!-- Desglose en vivo -->
+      <div x-show="form.amount > 0"
+           x-transition:enter="transition ease-out duration-200"
+           x-transition:enter-start="opacity-0 -translate-y-1"
+           x-transition:enter-end="opacity-100 translate-y-0"
+           class="bg-slate-900/50 rounded-xl border border-slate-700/40 overflow-hidden mb-4">
+        <div class="px-4 py-2 bg-slate-700/20 border-b border-slate-700/40">
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Desglose del pago</p>
+        </div>
+        <div class="p-4 space-y-2 text-sm">
+          <div x-show="form.mode !== 'capital'" class="flex justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+              <span class="text-slate-400">Pago de interés</span>
+            </div>
+            <span class="font-mono text-amber-400" x-text="'$' + fmt(breakdown.interest)"></span>
+          </div>
+          <div class="flex justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span class="text-slate-400">Abono a capital</span>
+            </div>
+            <span class="font-mono text-emerald-400" x-text="'$' + fmt(breakdown.capital)"></span>
+          </div>
+          <div class="flex justify-between pt-2 border-t border-slate-700/60">
+            <span class="text-slate-300 font-medium">Nuevo saldo insoluto</span>
+            <span class="font-mono font-bold text-slate-100" x-text="'$' + fmt(breakdown.newBalance)"></span>
+          </div>
+          <div x-show="breakdown.overpayment > 0" class="flex justify-between text-xs">
+            <span class="text-amber-500/80">Excedente a devolver</span>
+            <span class="font-mono text-amber-400" x-text="'$' + fmt(breakdown.overpayment)"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Error -->
+      <div x-show="form.error" x-cloak
+           class="flex items-start gap-2 bg-red-900/20 border border-red-700/30 rounded-xl px-3 py-2.5 mb-3">
+        <span class="text-red-400 text-xs" x-text="form.error"></span>
+      </div>
+
+      <!-- Botón submit -->
+      <button @click="submitPayment()"
+              :disabled="form.loading || form.amount <= 0"
+              class="w-full py-2.5 rounded-xl text-sm font-semibold transition-colors
+                     disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
+              :class="form.mode === 'capital'
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30'
+                : form.mode === 'interest'
+                  ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-900/30'
+                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/30'">
+        <span x-show="!form.loading"
+              x-text="form.mode === 'capital' ? 'Confirmar Abono a Capital'
+                     : form.mode === 'interest' ? 'Confirmar Pago de Interés'
+                     : 'Confirmar Pago'"></span>
+        <span x-show="form.loading" class="flex items-center justify-center gap-2">
+          <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          Procesando…
+        </span>
+      </button>
+    </div>
+
+    <!-- Historial de transacciones -->
+    <div class="px-6 py-5" id="historial-inner-{{ loan.id }}">
+      <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+        Historial de Movimientos
+        <span class="ml-auto text-xs text-slate-600 font-normal">{{ historial | length }} registros</span>
+      </h3>
+
+      {% if not historial %}
+      <p class="text-slate-600 text-sm text-center py-6">Sin movimientos registrados.</p>
+      {% else %}
+      <div class="space-y-2">
+        {% for txn in historial %}
+        <div class="flex items-start gap-3 py-2.5 border-b border-slate-700/30 last:border-0">
+          <!-- Tipo dot -->
+          <div class="mt-0.5 w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0
+                      {% if txn.transaction_type == 'interest_payment' %}bg-amber-500/10
+                      {% elif txn.transaction_type == 'capital_payment' %}bg-emerald-500/10
+                      {% else %}bg-slate-700/50{% endif %}">
+            {% if txn.transaction_type == 'interest_payment' %}
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            {% elif txn.transaction_type == 'capital_payment' %}
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            {% else %}
+            <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+            {% endif %}
+          </div>
+          <!-- Info -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <p class="text-sm font-medium
+                         {% if txn.transaction_type == 'interest_payment' %}text-amber-300
+                         {% elif txn.transaction_type == 'capital_payment' %}text-emerald-300
+                         {% else %}text-slate-300{% endif %}">
+                {% if txn.transaction_type == 'interest_payment' %}Pago de Interés
+                {% elif txn.transaction_type == 'capital_payment' %}Abono a Capital
+                {% else %}Ahorro{% endif %}
+              </p>
+              <p class="font-mono font-semibold text-slate-100 text-sm">${{ "{:,.2f}".format(txn.amount) }}</p>
+            </div>
+            <div class="flex items-center gap-2 mt-0.5">
+              <p class="text-xs text-slate-500">{{ txn.transaction_date }}</p>
+              {% if txn.notes %}
+              <span class="text-slate-700">·</span>
+              <p class="text-xs text-slate-600 truncate">{{ txn.notes }}</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- ── Acciones de préstamo ─────────────────────────────────────────────── -->
+    <div class="px-6 py-5 border-t border-slate-700/40">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">Acciones del Préstamo</h3>
+
+      <!-- Cambiar fecha de inicio -->
+      <div class="mb-3">
+        <button @click="editingStartDate = !editingStartDate; confirmDelete = false"
+                class="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
+                       bg-slate-700/60 hover:bg-slate-600/80 text-slate-300 border border-slate-600/40
+                       transition-colors text-left">
+          <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+          <span class="flex-1">Cambiar fecha de inicio</span>
+          <span class="text-xs text-slate-500 font-mono">{{ loan.start_date }}</span>
+          <svg class="w-4 h-4 text-slate-500 transition-transform duration-200"
+               :class="editingStartDate ? 'rotate-180' : ''"
+               fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+
+        <div x-show="editingStartDate"
+             x-transition:enter="transition ease-out duration-150"
+             x-transition:enter-start="opacity-0 -translate-y-1"
+             x-transition:enter-end="opacity-100 translate-y-0"
+             class="mt-2 p-4 bg-slate-900/60 rounded-xl border border-slate-700/40 space-y-3">
+          <p class="text-xs text-slate-500">
+            Cambia la fecha de inicio del préstamo. Esto afecta el cálculo de interés acumulado retrospectivo.
+          </p>
+          <div class="flex gap-2">
+            <input type="date" x-model="newStartDate"
+                   class="flex-1 bg-slate-800 border border-slate-600/60 focus:border-emerald-500/70
+                          rounded-xl px-3 py-2 text-slate-100 text-sm focus:outline-none transition-all
+                          [color-scheme:dark]"/>
+            <button @click="submitStartDate()"
+                    :disabled="startDateLoading || !newStartDate"
+                    class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm
+                           font-semibold transition-colors disabled:opacity-40">
+              <span x-show="!startDateLoading">Guardar</span>
+              <span x-show="startDateLoading">
+                <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+              </span>
+            </button>
+          </div>
+          <div x-show="startDateError" class="text-xs text-red-400" x-text="startDateError"></div>
+        </div>
+      </div>
+
+      <!-- Eliminar préstamo -->
+      <div>
+        <button x-show="!confirmDelete"
+                @click="confirmDelete = true; editingStartDate = false"
+                class="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
+                       bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-700/30
+                       transition-colors">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
+          Eliminar préstamo
+        </button>
+
+        <div x-show="confirmDelete"
+             x-transition:enter="transition ease-out duration-150"
+             x-transition:enter-start="opacity-0 scale-95"
+             x-transition:enter-end="opacity-100 scale-100"
+             class="p-4 bg-red-900/20 border border-red-700/30 rounded-xl space-y-3">
+          <p class="text-sm font-semibold text-red-300">¿Eliminar este préstamo?</p>
+          <p class="text-xs text-red-400/80 leading-relaxed">
+            Se eliminará el préstamo y <strong>todas sus transacciones</strong> asociadas.
+            Esta acción no se puede deshacer.
+          </p>
+          <div class="flex gap-2">
+            <button @click="confirmDelete = false"
+                    class="flex-1 py-2 rounded-xl text-sm font-medium bg-slate-700/60
+                           hover:bg-slate-600 text-slate-300 transition-colors">
+              Cancelar
+            </button>
+            <button @click="submitDelete()"
+                    :disabled="deleteLoading"
+                    class="flex-1 py-2 rounded-xl text-sm font-semibold bg-red-600
+                           hover:bg-red-500 text-white transition-colors disabled:opacity-40">
+              <span x-show="!deleteLoading">Sí, eliminar</span>
+              <span x-show="deleteLoading" class="flex items-center justify-center gap-2">
+                <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>Eliminando…
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div><!-- end scrollable -->
+
+</div>
+
+{% endif %}

@@ -111,7 +111,7 @@
       </div>
       <div x-show="vista === 'real'" class="flex items-center gap-1.5">
         <div class="w-4 h-4 rounded bg-amber-500/80"></div>
-        <span>Pendiente (click para alternar)</span>
+        <span>Pendiente (click para marcar pagado)</span>
       </div>
       <div class="flex items-center gap-1.5">
         <div class="w-4 h-4 rounded bg-slate-700/80"></div>
@@ -181,10 +181,10 @@
                       <!-- Real: toggle verde/amarillo -->
                       <button @click="toggleCell(member.id, q.num)"
                               class="w-6 h-6 rounded mx-auto transition-all duration-150 hover:scale-110 active:scale-95 border"
-                              :class="isPendiente(member.id, q.num)
-                                ? 'bg-amber-500/80 border-amber-400/50 hover:bg-amber-400/80'
-                                : 'bg-emerald-600/80 border-emerald-500/40 hover:bg-emerald-500/80'"
-                              :title="(isPendiente(member.id, q.num) ? 'Pendiente' : 'Pagado') + ' — ' + member.name + ' Q' + q.num">
+                              :class="isPagada(member.id, q.num)
+                                ? 'bg-emerald-600/80 border-emerald-500/40 hover:bg-emerald-500/80'
+                                : 'bg-amber-500/80 border-amber-400/50 hover:bg-amber-400/80'"
+                              :title="(isPagada(member.id, q.num) ? 'Pagado' : 'Pendiente') + ' — ' + member.name + ' Q' + q.num">
                       </button>
                     </template>
                   </td>
@@ -253,8 +253,8 @@ function quincenasApp(cajaId, cajaInfo) {
     error: null,
     vista: 'real',
 
-    // Set local de (member_id, quincena_num) marcados como pendientes
-    pendientesSet: new Set(),
+    // Set local de (member_id, quincena_num) marcados como PAGADOS
+    pagadasSet: new Set(),
 
     init() {
       if (cajaInfo && cajaInfo.start_date) {
@@ -272,9 +272,9 @@ function quincenasApp(cajaId, cajaInfo) {
           throw new Error(err.detail ?? `Error ${res.status}`);
         }
         this.data = await res.json();
-        // Reconstruir el Set de pendientes
-        this.pendientesSet = new Set(
-          this.data.pendientes.map(p => `${p.member_id}:${p.quincena_num}`)
+        // Reconstruir el Set de pagadas
+        this.pagadasSet = new Set(
+          this.data.pagadas.map(p => `${p.member_id}:${p.quincena_num}`)
         );
       } catch (e) {
         this.error = e.message;
@@ -283,50 +283,52 @@ function quincenasApp(cajaId, cajaInfo) {
       }
     },
 
-    isPendiente(memberId, quincenaNum) {
-      return this.pendientesSet.has(`${memberId}:${quincenaNum}`);
+    isPagada(memberId, quincenaNum) {
+      return this.pagadasSet.has(`${memberId}:${quincenaNum}`);
     },
 
     pendientesCount() {
       if (!this.data) return 0;
       const currentQ = this.data.caja.quincena_actual;
+      const internos = this.data.members.filter(m => m.member_type === 'dentro');
       let count = 0;
-      for (const key of this.pendientesSet) {
-        const [, qNum] = key.split(':').map(Number);
-        if (qNum <= currentQ) count++;
+      for (const m of internos) {
+        for (let q = 1; q <= currentQ; q++) {
+          if (!this.isPagada(m.id, q)) count++;
+        }
       }
       return count;
     },
 
     capitalReal() {
       if (!this.data) return 0;
-      const cuota = this.data.caja.quota_amount;
-      const ideal = this.data.resumen.capital_ideal;
-      // Solo contar pendientes de socios internos en quincenas pasadas
-      const currentQ = this.data.caja.quincena_actual;
-      const internos = new Set(
-        this.data.members
-          .filter(m => m.member_type === 'dentro')
-          .map(m => m.id)
-      );
-      let pendientesPagos = 0;
-      for (const key of this.pendientesSet) {
-        const [mid, qNum] = key.split(':').map(Number);
-        if (internos.has(mid) && qNum <= currentQ) pendientesPagos++;
+      const quotaMap = {};
+      for (const m of this.data.members) {
+        if (m.member_type === 'dentro') {
+          quotaMap[m.id] = m.quota_personal || this.data.caja.quota_amount;
+        }
       }
-      return Math.max(0, ideal - pendientesPagos * cuota);
+      let total = 0;
+      for (const key of this.pagadasSet) {
+        const [mid, qNum] = key.split(':').map(Number);
+        if (quotaMap[mid] !== undefined) {
+          total += quotaMap[mid];
+        }
+      }
+      return total;
     },
 
     async toggleCell(memberId, quincenaNum) {
       const key = `${memberId}:${quincenaNum}`;
+      const wasPagada = this.pagadasSet.has(key);
+      
       // Optimistic update
-      if (this.pendientesSet.has(key)) {
-        this.pendientesSet.delete(key);
+      if (wasPagada) {
+        this.pagadasSet.delete(key);
       } else {
-        this.pendientesSet.add(key);
+        this.pagadasSet.add(key);
       }
-      // Force Alpine reactivity
-      this.pendientesSet = new Set(this.pendientesSet);
+      this.pagadasSet = new Set(this.pagadasSet);
 
       try {
         const res = await fetch('/api/v1/quincenas/toggle', {
@@ -339,24 +341,17 @@ function quincenasApp(cajaId, cajaInfo) {
           }),
         });
         if (!res.ok) {
-          // Revert on error
-          if (this.pendientesSet.has(key)) {
-            this.pendientesSet.delete(key);
-          } else {
-            this.pendientesSet.add(key);
-          }
-          this.pendientesSet = new Set(this.pendientesSet);
+          // Revert
+          if (this.pagadasSet.has(key)) this.pagadasSet.delete(key);
+          else this.pagadasSet.add(key);
+          this.pagadasSet = new Set(this.pagadasSet);
           const err = await res.json().catch(() => ({}));
-          window.__toast?.(err.detail ?? 'Error al actualizar', 'error');
+          window.__toast?.(err.detail ?? 'Error', 'error');
         }
       } catch {
-        // Revert silently
-        if (this.pendientesSet.has(key)) {
-          this.pendientesSet.delete(key);
-        } else {
-          this.pendientesSet.add(key);
-        }
-        this.pendientesSet = new Set(this.pendientesSet);
+        if (this.pagadasSet.has(key)) this.pagadasSet.delete(key);
+        else this.pagadasSet.add(key);
+        this.pagadasSet = new Set(this.pagadasSet);
       }
     },
 
