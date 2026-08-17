@@ -40,9 +40,10 @@ def get_metrics(caja_id: int = Query(...), db: Session = Depends(get_db)):
         .scalar() or 0
     ))
 
+    # Solo socios internos ("dentro") cuentan para el ahorro de la caja
     total_ahorros = Decimal(str(
         db.query(func.sum(Member.savings_balance))
-        .filter(Member.caja_id == caja_id)
+        .filter(Member.caja_id == caja_id, Member.member_type == "dentro")
         .scalar() or 0
     ))
 
@@ -68,19 +69,21 @@ def get_metrics(caja_id: int = Query(...), db: Session = Depends(get_db)):
     ))
 
     # Proyección de cierre: ahorros actuales + intereses que generarán los
-    # préstamos activos durante los meses restantes del ciclo
+    # Proyección basada en tasa mensual observada
     today = date.today()
-    remaining_months = max(0, round((CYCLE_END - today).days / 30))
-    active_loans = (
-        db.query(Loan)
-        .filter(Loan.caja_id == caja_id, Loan.status == "active")
-        .all()
+    cycle_start = caja.start_date or date(2025, 12, 15)
+    meses_transcurridos = max(1, round((today - cycle_start).days / 30))
+    meses_restantes = max(0, round((CYCLE_END - today).days / 30))
+
+    tasa_mensual_obs = Decimal("0")
+    if total_ahorros > 0 and meses_transcurridos > 0:
+        tasa_mensual_obs = intereses_totales / (total_ahorros * meses_transcurridos)
+
+    intereses_proy_adicionales = (total_ahorros * tasa_mensual_obs * meses_restantes).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    intereses_proyectados = sum(
-        calculate_monthly_interest(l.outstanding_balance, l.interest_rate) * remaining_months
-        for l in active_loans
-    )
-    proyeccion_cierre = (total_ahorros + intereses_totales + Decimal(str(intereses_proyectados))).quantize(
+    intereses_cierre = intereses_totales + intereses_proy_adicionales
+    proyeccion_cierre = (total_ahorros + intereses_cierre).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
 
@@ -91,7 +94,7 @@ def get_metrics(caja_id: int = Query(...), db: Session = Depends(get_db)):
     )
     total_socios = (
         db.query(func.count(Member.id))
-        .filter(Member.caja_id == caja_id, Member.is_active == True)
+        .filter(Member.caja_id == caja_id, Member.is_active == True, Member.member_type == "dentro")
         .scalar() or 0
     )
 

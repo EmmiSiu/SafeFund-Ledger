@@ -6,10 +6,16 @@
       "Bash(alembic init:*)",
       "Bash(alembic revision:*)",
       "Bash(alembic upgrade:*)",
-      "Bash(source /c/Users/emiro/OneDrive/Escritorio/SafeFund-Ledger/venv/Scripts/activate)",
+      "Bash(source /c/Users/emiro/programming/SafeFund-Ledger/venv/Scripts/activate)",
       "Bash(docker compose:*)",
       "Bash(curl:*)",
-      "Bash(venv/Scripts/python.exe -c \":*)"
+      "Bash(venv/Scripts/python.exe -c \":*)",
+      "Bash(venv/Scripts/python.exe -c \"from app.api.v1.loans import router; print\\(''API OK''\\)\")",
+      "Bash(venv/Scripts/python.exe -c \"from app.api.v1.transactions import router; print\\(''Transactions API OK''\\)\")",
+      "Bash(venv/Scripts/python.exe -c \"from app.main import app; print\\(''App OK''\\)\")",
+      "Bash(grep -oP '\\(?<=font-mono tracking-tight\"\"\"\">\\\\s*\\\\$\\)[0-9,.]+')",
+      "Bash(grep -oP '\\\\$[0-9,]+\\\\.\\\\d{2}')",
+      "Bash(venv/Scripts/python.exe -c \"import fastapi; import jinja2; import sqlalchemy; import uvicorn; print\\(''All OK''\\)\")"
     ]
   }
 }

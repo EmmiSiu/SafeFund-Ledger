@@ -10,7 +10,7 @@ Regla de Oro de Amortización:
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
-CENT = Decimal("0.01")
+from app.core.money import CENT
 
 
 def calculate_monthly_interest(

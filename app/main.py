@@ -21,6 +21,7 @@ from app.api.v1.reports import router as reports_router
 from app.api.v1.transactions import router as transactions_router
 from app.core.config import settings
 from app.core.database import engine, get_db
+from app.core.money import CENT
 from app.models.base import (
     Aportacion,
     Base,
@@ -47,6 +48,20 @@ async def lifespan(app: FastAPI):
             conn.commit()
         except Exception:
             pass  # columna ya existe
+        try:
+            conn.execute(text(
+                "ALTER TABLE members ADD COLUMN interest_rate NUMERIC(5,4)"
+            ))
+            conn.commit()
+        except Exception:
+            pass  # columna ya existe
+        # Índice compuesto para el detector de duplicados y el timeline de préstamos
+        # (consultan transactions por loan_id + transaction_type + fecha con frecuencia).
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_transactions_loan_type_date "
+            "ON transactions (loan_id, transaction_type, transaction_date)"
+        ))
+        conn.commit()
     yield
 
 
@@ -100,68 +115,92 @@ def dashboard_view(request: Request, caja_id: int = 1, db: Session = Depends(get
     if caja:
         caja_id = caja.id
         start   = today.replace(day=1)
+        from decimal import ROUND_HALF_UP
+        from datetime import date as _date
+        from app.services.finance_engine import calculate_monthly_interest
 
-        capital = db.query(func.sum(Loan.outstanding_balance)).filter(
-            Loan.caja_id == caja_id, Loan.status == "active"
-        ).scalar() or Decimal("0")
+        capital = Decimal(str(
+            db.query(func.sum(Loan.outstanding_balance)).filter(
+                Loan.caja_id == caja_id, Loan.status == "active"
+            ).scalar() or 0
+        ))
 
-        ahorros = db.query(func.sum(Member.savings_balance)).filter(
-            Member.caja_id == caja_id
-        ).scalar() or Decimal("0")
+        # Solo socios internos ("dentro") cuentan para el ahorro de la caja
+        ahorros = Decimal(str(
+            db.query(func.sum(Member.savings_balance)).filter(
+                Member.caja_id == caja_id, Member.member_type == "dentro"
+            ).scalar() or 0
+        ))
 
-        intereses = db.query(func.sum(Transaction.amount)).join(
-            Loan, Transaction.loan_id == Loan.id
-        ).filter(
-            Loan.caja_id == caja_id,
-            Transaction.transaction_type == "interest_payment",
-            Transaction.transaction_date >= start,
-        ).scalar() or Decimal("0")
+        intereses_mes = Decimal(str(
+            db.query(func.sum(Transaction.amount)).join(
+                Loan, Transaction.loan_id == Loan.id
+            ).filter(
+                Loan.caja_id == caja_id,
+                Transaction.transaction_type == "interest_payment",
+                Transaction.transaction_date >= start,
+            ).scalar() or 0
+        ))
 
         n_prestamos = db.query(func.count(Loan.id)).filter(
             Loan.caja_id == caja_id, Loan.status == "active"
         ).scalar() or 0
 
+        # Solo contar socios internos activos
         n_socios = db.query(func.count(Member.id)).filter(
-            Member.caja_id == caja_id, Member.is_active == True
+            Member.caja_id == caja_id, Member.is_active == True, Member.member_type == "dentro"
         ).scalar() or 0
 
-        from app.services.finance_engine import calculate_monthly_interest
-        from decimal import ROUND_HALF_UP
-        from datetime import date as _date
-
-        CYCLE_END = _date(2026, 11, 30)
-        remaining_months = max(0, round((CYCLE_END - today).days / 30))
-
-        active_loans = (
-            db.query(Loan)
-            .filter(Loan.caja_id == caja_id, Loan.status == "active")
-            .all()
-        )
         intereses_totales = Decimal(str(
             db.query(func.sum(Transaction.amount))
             .join(Loan, Transaction.loan_id == Loan.id)
             .filter(Loan.caja_id == caja_id, Transaction.transaction_type == "interest_payment")
             .scalar() or 0
         ))
-        intereses_proyectados = sum(
-            calculate_monthly_interest(l.outstanding_balance, l.interest_rate) * remaining_months
-            for l in active_loans
-        )
-        proyeccion = (
-            Decimal(str(ahorros)) + intereses_totales + Decimal(str(intereses_proyectados))
-        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        # ── Rendimiento actual: intereses / ahorro internos ──
+        rendimiento_pct = Decimal("0")
+        if ahorros > 0:
+            rendimiento_pct = (intereses_totales / ahorros * 100).quantize(CENT, rounding=ROUND_HALF_UP)
+
+        # ── Proyección de rendimiento al cierre ──
+        # Fórmula: tasa_mensual_observada = intereses_cobrados / (ahorros × meses_transcurridos)
+        # Proyección = tasa_mensual_obs × ahorros × meses_restantes + intereses_cobrados
+        CYCLE_END = _date(2026, 11, 30)
+        cycle_start = caja.start_date or _date(2025, 12, 15)
+        meses_transcurridos = max(1, round((today - cycle_start).days / 30))
+        meses_restantes = max(0, round((CYCLE_END - today).days / 30))
+
+        tasa_mensual_obs = Decimal("0")
+        if ahorros > 0 and meses_transcurridos > 0:
+            tasa_mensual_obs = (intereses_totales / (ahorros * meses_transcurridos))
+
+        intereses_proy_adicionales = (ahorros * tasa_mensual_obs * meses_restantes).quantize(CENT, rounding=ROUND_HALF_UP)
+        intereses_cierre = (intereses_totales + intereses_proy_adicionales).quantize(CENT, rounding=ROUND_HALF_UP)
+        rendimiento_proy_pct = Decimal("0")
+        if ahorros > 0:
+            rendimiento_proy_pct = (intereses_cierre / ahorros * 100).quantize(CENT, rounding=ROUND_HALF_UP)
+
+        proyeccion = (ahorros + intereses_cierre).quantize(CENT, rounding=ROUND_HALF_UP)
 
         metrics = {
-            "caja_id":             caja_id,
-            "caja_name":           caja.name,
-            "total_en_caja":       Decimal(str(ahorros)),
-            "capital_en_prestamos": Decimal(str(capital)),
-            "intereses_totales":   intereses_totales,
-            "proyeccion_cierre":   proyeccion,
-            "capital_disponible":  Decimal(str(ahorros)) - Decimal(str(capital)),
-            "intereses_mes":       Decimal(str(intereses)),
-            "prestamos_activos":   n_prestamos,
-            "total_socios":        n_socios,
+            "caja_id":              caja_id,
+            "caja_name":            caja.name,
+            "total_en_caja":        ahorros,
+            "capital_en_prestamos": capital,
+            "intereses_totales":    intereses_totales,
+            "proyeccion_cierre":    proyeccion,
+            "capital_disponible":   ahorros - capital,
+            "intereses_mes":        intereses_mes,
+            "prestamos_activos":    n_prestamos,
+            "total_socios":         n_socios,
+            "rendimiento_pct":      rendimiento_pct,
+            "rendimiento_proy_pct": rendimiento_proy_pct,
+            "intereses_cierre":     intereses_cierre,
+            "tasa_mensual_obs":     float(tasa_mensual_obs * 100),
+            "meses_transcurridos":  meses_transcurridos,
+            "meses_restantes":      meses_restantes,
+            "cycle_end":            str(CYCLE_END),
         }
 
     return templates.TemplateResponse(request, "dashboard.html", {
@@ -182,14 +221,16 @@ def loans_view(request: Request, caja_id: int = 1, db: Session = Depends(get_db)
     if caja:
         caja_id = caja.id
         start_of_month = date.today().replace(day=1)
-        rows = (
-            db.query(Loan)
-            .options(joinedload(Loan.member))
+        from app.models.base import MemberGroup as MG
+        loan_rows = (
+            db.query(Loan, Member.name, Member.member_type, MG.name.label("group_name"))
+            .join(Member, Loan.member_id == Member.id)
+            .outerjoin(MG, Member.group_id == MG.id)
             .filter(Loan.caja_id == caja_id, Loan.status == "active")
             .order_by(Loan.id)
             .all()
         )
-        for l in rows:
+        for l, member_name, member_type, group_name in loan_rows:
             last_interest = (
                 db.query(Transaction)
                 .filter(
@@ -205,7 +246,10 @@ def loans_view(request: Request, caja_id: int = 1, db: Session = Depends(get_db)
             )
             loans_data.append({
                 "id":                     l.id,
-                "member_name":            l.member.name if l.member else "",
+                "member_id":              l.member_id,
+                "member_name":            member_name or "",
+                "member_type":            member_type or "dentro",
+                "group_name":             group_name or "Sin grupo",
                 "initial_amount":         float(l.initial_amount),
                 "outstanding_balance":    float(l.outstanding_balance),
                 "interest_rate":          float(l.interest_rate),
@@ -218,12 +262,23 @@ def loans_view(request: Request, caja_id: int = 1, db: Session = Depends(get_db)
 
     members_dropdown = []
     if caja:
+        from app.models.base import MemberGroup
+        rows = (
+            db.query(Member, MemberGroup.name.label("group_name"))
+            .outerjoin(MemberGroup, Member.group_id == MemberGroup.id)
+            .filter(Member.caja_id == caja.id, Member.is_active == True)
+            .order_by(Member.name)
+            .all()
+        )
         members_dropdown = [
-            {"id": m.id, "name": m.name, "member_type": m.member_type}
-            for m in db.query(Member)
-                .filter(Member.caja_id == caja.id, Member.is_active == True)
-                .order_by(Member.name)
-                .all()
+            {
+                "id": m.id,
+                "name": m.name,
+                "member_type": m.member_type,
+                "group_name": gn or "Sin grupo",
+                "interest_rate": float(m.interest_rate) if m.interest_rate is not None else None,
+            }
+            for m, gn in rows
         ]
 
     return templates.TemplateResponse(request, "loans.html", {
@@ -297,6 +352,7 @@ def members_view(request: Request, caja_id: int = 1, db: Session = Depends(get_d
                 "group_id":         m.group_id,
                 "member_type":      m.member_type,
                 "quota_personal":   float(m.quota_personal),
+                "interest_rate":    float(m.interest_rate) if m.interest_rate is not None else None,
                 "quincena_hasta":   quincena_hasta_m,
                 "savings_balance":  float(correct_balance),
                 "active_loans":     len(active),
@@ -595,15 +651,19 @@ def loans_metrics_partial(request: Request, caja_id: int = 1, db: Session = Depe
         .limit(5)
         .all()
     )
+    from app.models.base import MemberGroup as MG2
     ranking = []
     for row in member_interest_rows:
         m = db.get(Member, row.member_id)
         if not m:
             continue
+        grp = db.get(MG2, m.group_id) if m.group_id else None
         m_active = [l for l in active_loans if l.member_id == row.member_id]
         ranking.append({
             "member_name": m.name,
+            "group_name": grp.name if grp else "Sin grupo",
             "total_intereses": float(Decimal(str(row.total))),
+            "total_prestado": float(sum(Decimal(str(l.initial_amount)) for l in m_active)),
             "outstanding_balance": float(sum(Decimal(str(l.outstanding_balance)) for l in m_active)),
             "n_loans": len(m_active),
         })
@@ -646,7 +706,6 @@ def loan_gestionar_partial(request: Request, loan_id: int, db: Session = Depends
         })
 
     today = date.today()
-    CENT = Decimal("0.01")
     balance = Decimal(str(loan.outstanding_balance))
     rate = Decimal(str(loan.interest_rate))
     interes_mes = (balance * rate).quantize(CENT, rounding=ROUND_HALF_UP)

@@ -15,7 +15,8 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-CENT = Decimal("0.01")
+from app.core.money import CENT
+
 DAYS_PER_MONTH = Decimal("30")
 
 
@@ -37,6 +38,49 @@ class InteresAcumuladoResult:
     interes_acumulado: Decimal
     saldo_insoluto_actual: Decimal
     periodos: list[PeriodoInteres] = field(default_factory=list)
+
+
+@dataclass
+class TransaccionSospechosa:
+    id: int
+    fecha: date
+    monto: Decimal
+    notas: Optional[str]
+
+
+@dataclass
+class GrupoInteresDuplicado:
+    loan_id: int
+    member_id: int
+    member_name: str
+    loan_type: str
+    transacciones: list[TransaccionSospechosa]
+    dias_entre_pagos: list[int]
+    total_monto: Decimal
+    sugerido_conservar_id: int
+
+
+@dataclass
+class EventoTimeline:
+    fecha: date
+    tipo: str  # "apertura" | "interest_payment" | "capital_payment" | "loan_increment" | "hoy"
+    monto: Decimal
+    dias_desde_anterior: int
+    interes_generado_periodo: Decimal
+    saldo_antes: Decimal
+    saldo_despues: Decimal
+    notas: Optional[str]
+    transaction_id: Optional[int]
+
+
+@dataclass
+class LoanTimelineResult:
+    loan_id: int
+    eventos: list[EventoTimeline]
+    interes_generado_total: Decimal
+    interes_pagado_total: Decimal
+    interes_pendiente: Decimal
+    saldo_actual: Decimal
 
 
 @dataclass
@@ -281,3 +325,178 @@ def get_capital_metrics(caja_id: int, fecha_corte: date, db: Session) -> dict:
         "capital_disponible": float(capital_disponible),
         "rendimiento_pct": float(rendimiento_pct),
     }
+
+
+# ── Detector de intereses duplicados ───────────────────────────────────────────
+
+def find_duplicate_interest_payments(
+    caja_id: int, db: Session, min_gap_days: int = 25
+) -> list[GrupoInteresDuplicado]:
+    """
+    Detecta pagos de interés sospechosos de estar duplicados: dos o más
+    `interest_payment` del mismo préstamo separados por menos de `min_gap_days`
+    (un ciclo mensual normal es ~30 días). Transacciones consecutivas dentro de
+    ese margen se agrupan en una sola cadena sospechosa.
+
+    No elimina nada — solo reporta para que el usuario decida qué purgar
+    (vía el endpoint existente DELETE /transactions/{id}).
+    """
+    from app.models.base import Loan, Member, Transaction
+
+    loans = db.query(Loan).filter(Loan.caja_id == caja_id).all()
+    grupos: list[GrupoInteresDuplicado] = []
+
+    for loan in loans:
+        txns = (
+            db.query(Transaction)
+            .filter(
+                Transaction.loan_id == loan.id,
+                Transaction.transaction_type == "interest_payment",
+            )
+            .order_by(Transaction.transaction_date, Transaction.id)
+            .all()
+        )
+        if len(txns) < 2:
+            continue
+
+        chains: list[list[Transaction]] = []
+        current_chain = [txns[0]]
+        for prev_txn, curr_txn in zip(txns, txns[1:]):
+            gap = (curr_txn.transaction_date - prev_txn.transaction_date).days
+            if gap < min_gap_days:
+                current_chain.append(curr_txn)
+            else:
+                if len(current_chain) > 1:
+                    chains.append(current_chain)
+                current_chain = [curr_txn]
+        if len(current_chain) > 1:
+            chains.append(current_chain)
+
+        if not chains:
+            continue
+
+        member = db.get(Member, loan.member_id)
+        for chain in chains:
+            gaps = [
+                (chain[i + 1].transaction_date - chain[i].transaction_date).days
+                for i in range(len(chain) - 1)
+            ]
+            total = sum(Decimal(str(t.amount)) for t in chain).quantize(CENT, rounding=ROUND_HALF_UP)
+            grupos.append(GrupoInteresDuplicado(
+                loan_id=loan.id,
+                member_id=loan.member_id,
+                member_name=member.name if member else "",
+                loan_type=loan.loan_type,
+                transacciones=[
+                    TransaccionSospechosa(
+                        id=t.id, fecha=t.transaction_date,
+                        monto=Decimal(str(t.amount)), notas=t.notes,
+                    )
+                    for t in chain
+                ],
+                dias_entre_pagos=gaps,
+                total_monto=total,
+                sugerido_conservar_id=chain[0].id,
+            ))
+
+    grupos.sort(key=lambda g: g.total_monto, reverse=True)
+    return grupos
+
+
+# ── Timeline de evolución del préstamo ─────────────────────────────────────────
+
+def build_loan_timeline(
+    loan_id: int, db: Session, fecha_corte: Optional[date] = None
+) -> LoanTimelineResult:
+    """
+    Reconstruye la evolución del préstamo evento por evento desde su apertura:
+    monto inicial, cada movimiento (interés, abono a capital, incremento) con el
+    saldo antes/después y el interés que se generó desde el evento anterior.
+
+    Nota: `loan.initial_amount` y `outstanding_balance` reflejan el estado ACTUAL
+    (incluyen incrementos ya aplicados), así que el saldo de apertura se
+    reconstruye restando los incrementos históricos para no duplicarlos al
+    reproducirlos en orden cronológico.
+    """
+    from app.models.base import Loan, Transaction
+
+    loan = db.get(Loan, loan_id)
+    if not loan:
+        raise ValueError(f"Préstamo {loan_id} no encontrado.")
+    if fecha_corte is None:
+        fecha_corte = date.today()
+
+    rate = Decimal(str(loan.interest_rate))
+    txns = (
+        db.query(Transaction)
+        .filter(Transaction.loan_id == loan_id)
+        .order_by(Transaction.transaction_date, Transaction.id)
+        .all()
+    )
+
+    total_incrementos = sum(
+        (Decimal(str(t.amount)) for t in txns if t.transaction_type == "loan_increment"),
+        Decimal("0"),
+    )
+    balance = (Decimal(str(loan.initial_amount)) - total_incrementos).quantize(CENT, rounding=ROUND_HALF_UP)
+    prev_date = loan.start_date
+
+    eventos: list[EventoTimeline] = [
+        EventoTimeline(
+            fecha=loan.start_date, tipo="apertura", monto=balance,
+            dias_desde_anterior=0, interes_generado_periodo=Decimal("0.00"),
+            saldo_antes=Decimal("0.00"), saldo_despues=balance,
+            notas="Apertura del préstamo", transaction_id=None,
+        )
+    ]
+
+    interes_generado_total = Decimal("0.00")
+    interes_pagado_total = Decimal("0.00")
+
+    for txn in txns:
+        dias = max(0, (txn.transaction_date - prev_date).days)
+        interes_periodo = (
+            balance * rate * Decimal(str(dias)) / DAYS_PER_MONTH
+        ).quantize(CENT, rounding=ROUND_HALF_UP)
+        interes_generado_total += interes_periodo
+
+        saldo_antes = balance
+        monto = Decimal(str(txn.amount))
+
+        if txn.transaction_type == "capital_payment":
+            balance = max(Decimal("0"), (balance - monto).quantize(CENT, rounding=ROUND_HALF_UP))
+        elif txn.transaction_type == "loan_increment":
+            balance = (balance + monto).quantize(CENT, rounding=ROUND_HALF_UP)
+        elif txn.transaction_type == "interest_payment":
+            interes_pagado_total += monto
+            # No modifica el saldo insoluto.
+
+        eventos.append(EventoTimeline(
+            fecha=txn.transaction_date, tipo=txn.transaction_type, monto=monto,
+            dias_desde_anterior=dias, interes_generado_periodo=interes_periodo,
+            saldo_antes=saldo_antes, saldo_despues=balance,
+            notas=txn.notes, transaction_id=txn.id,
+        ))
+        prev_date = txn.transaction_date
+
+    if loan.status == "active" and fecha_corte > prev_date:
+        dias = (fecha_corte - prev_date).days
+        interes_periodo = (
+            balance * rate * Decimal(str(dias)) / DAYS_PER_MONTH
+        ).quantize(CENT, rounding=ROUND_HALF_UP)
+        interes_generado_total += interes_periodo
+        eventos.append(EventoTimeline(
+            fecha=fecha_corte, tipo="hoy", monto=Decimal("0.00"),
+            dias_desde_anterior=dias, interes_generado_periodo=interes_periodo,
+            saldo_antes=balance, saldo_despues=balance,
+            notas="Interés acumulado a la fecha (pendiente de pago)", transaction_id=None,
+        ))
+
+    return LoanTimelineResult(
+        loan_id=loan_id,
+        eventos=eventos,
+        interes_generado_total=interes_generado_total.quantize(CENT, rounding=ROUND_HALF_UP),
+        interes_pagado_total=interes_pagado_total.quantize(CENT, rounding=ROUND_HALF_UP),
+        interes_pendiente=(interes_generado_total - interes_pagado_total).quantize(CENT, rounding=ROUND_HALF_UP),
+        saldo_actual=balance,
+    )

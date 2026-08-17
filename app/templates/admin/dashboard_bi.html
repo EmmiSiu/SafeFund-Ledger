@@ -385,7 +385,7 @@ function biDashboard(cajaId, biData) {
 
     renderDonut() {
       const ctx = document.getElementById('donutChart');
-      if (!ctx) return;
+      if (!ctx || !ctx.getContext) return;
       const aportado  = parseFloat(this.bi.capital_aportado ?? 0);
       const prestado  = parseFloat(this.bi.capital_prestado ?? 0);
       const disponible = Math.max(0, aportado - prestado);
@@ -409,7 +409,7 @@ function biDashboard(cajaId, biData) {
 
     renderGruposChart() {
       const ctx = document.getElementById('gruposChart');
-      if (!ctx || !this.bi.group_stats || this.bi.group_stats.length === 0) return;
+      if (!ctx || !ctx.getContext || !this.bi.group_stats || this.bi.group_stats.length === 0) return;
       const sorted = [...this.bi.group_stats].sort((a, b) => b.total - a.total);
       const labels = sorted.map(g => g.name);
       const data   = sorted.map(g => g.total);
@@ -445,7 +445,7 @@ function biDashboard(cajaId, biData) {
 
     renderMoraChart() {
       const ctx = document.getElementById('morosidadChart');
-      if (!ctx || this.mora.length === 0) return;
+      if (!ctx || !ctx.getContext || this.mora.length === 0) return;
       const top    = this.mora.slice(0, 12);
       const labels = top.map(m => m.member_name.split(' ')[0]);
       const dias   = top.map(m => m.dias_sin_pago);

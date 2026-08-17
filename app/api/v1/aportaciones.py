@@ -6,6 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.money import CENT
 from app.models.base import Aportacion, CajaConfig, Loan, Member, Transaction
 from app.schemas.aportaciones import (
     AportacionCreate,
@@ -14,8 +15,6 @@ from app.schemas.aportaciones import (
 )
 
 router = APIRouter(prefix="/aportaciones", tags=["Aportaciones"])
-
-CENT = Decimal("0.01")
 
 
 @router.post("/", response_model=AportacionRead, status_code=status.HTTP_201_CREATED)

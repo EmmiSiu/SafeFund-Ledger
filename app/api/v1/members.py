@@ -1,4 +1,6 @@
+from datetime import date
 from decimal import Decimal
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -6,7 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.base import Aportacion, CajaConfig, Member, QuincenaPendiente
+from app.models.base import Aportacion, CajaConfig, Loan, Member, QuincenaPendiente
 from app.schemas.members import MemberCreate, MemberRead
 
 router = APIRouter(prefix="/members", tags=["Members"])
@@ -69,6 +71,25 @@ def update_cuota(member_id: int, payload: CuotaUpdate, db: Session = Depends(get
     if not member:
         raise HTTPException(status_code=404, detail="Socio no encontrado.")
     member.quota_personal = payload.quota_personal
+    db.commit()
+    db.refresh(member)
+    return member
+
+
+class InterestRateUpdate(BaseModel):
+    interest_rate: Optional[Decimal] = Field(None, ge=0, le=1)
+
+
+@router.patch("/{member_id}/interest-rate", response_model=MemberRead)
+def update_interest_rate(member_id: int, payload: InterestRateUpdate, db: Session = Depends(get_db)):
+    """
+    Actualiza la tasa de interés personalizada del socio (usada como default al
+    crear un préstamo para él). None restaura el uso de la tasa por defecto de la caja.
+    """
+    member = db.get(Member, member_id)
+    if not member:
+        raise HTTPException(status_code=404, detail="Socio no encontrado.")
+    member.interest_rate = payload.interest_rate
     db.commit()
     db.refresh(member)
     return member
@@ -140,3 +161,83 @@ def recalcular_aportaciones(payload: RecalcularRequest, db: Session = Depends(ge
     db.commit()
 
     return {"ok": True, "updated": updated, "members_processed": len(members)}
+
+
+class RetirarMemberRequest(BaseModel):
+    motivo: str | None = None
+    fecha_retiro: date | None = None
+
+
+class RetirarMemberResponse(BaseModel):
+    member_id: int
+    member_name: str
+    monto_devuelto: float
+    fecha_retiro: date
+    message: str
+
+
+@router.post("/{member_id}/retirar", response_model=RetirarMemberResponse)
+def retirar_member(
+    member_id: int,
+    payload: RetirarMemberRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Retira a un socio de la caja sin intereses (baja definitiva):
+    - Valida que no tenga préstamos activos con saldo insoluto
+    - Registra una Aportación negativa (log contable que descuenta del capital total de la caja)
+    - Pone savings_balance = 0
+    - Pone is_active = False (excluyéndolo de métricas activas, quincenas y rendimientos)
+    """
+    member = db.get(Member, member_id)
+    if not member:
+        raise HTTPException(status_code=404, detail="Socio no encontrado.")
+    if not member.is_active:
+        raise HTTPException(status_code=400, detail="El socio ya se encuentra inactivo.")
+
+    # Validar préstamos activos
+    active_loans = (
+        db.query(Loan)
+        .filter(Loan.member_id == member.id, Loan.status == "active", Loan.outstanding_balance > 0)
+        .all()
+    )
+    if active_loans:
+        total_debt = sum(Decimal(str(l.outstanding_balance)) for l in active_loans)
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se puede retirar al socio porque tiene préstamos activos con deuda total de ${total_debt:,.2f}. Debe liquidar sus préstamos primero.",
+        )
+
+    fecha = payload.fecha_retiro or date.today()
+    monto_devolucion = Decimal(str(member.savings_balance))
+
+    # Si tenía ahorros acumulados, registrar aportación negativa de salida (log contable)
+    if monto_devolucion > 0:
+        db.add(
+            Aportacion(
+                member_id=member.id,
+                caja_id=member.caja_id,
+                monto=-monto_devolucion,
+                fecha_aportacion=fecha,
+                quincena=None,
+                notas=f"[RETIRO] {payload.motivo or 'Baja de socio sin intereses'}",
+            )
+        )
+
+    member.savings_balance = Decimal("0.00")
+    member.is_active = False
+
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al procesar el retiro del socio: {exc}")
+
+    return RetirarMemberResponse(
+        member_id=member.id,
+        member_name=member.name,
+        monto_devuelto=float(monto_devolucion),
+        fecha_retiro=fecha,
+        message=f"Socio {member.name} retirado exitosamente. Se devolvió ${monto_devolucion:,.2f} sin intereses.",
+    )
+

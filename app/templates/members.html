@@ -219,7 +219,7 @@
         <tr class="border-b border-slate-700/60 bg-slate-900/40">
           <th class="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest">Nombre</th>
           <th class="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden sm:table-cell">Grupo</th>
-          <th class="text-right px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden sm:table-cell">Cuota / Q</th>
+          <th class="text-right px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden sm:table-cell">Cuota / Tasa</th>
           <th class="text-right px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest">Ahorros</th>
           <th class="text-right px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden md:table-cell">Deuda</th>
           <th class="text-center px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden lg:table-cell">Préstamos</th>
@@ -260,25 +260,41 @@
             </td>
 
             <td class="px-5 py-3.5 text-right hidden sm:table-cell">
-              <button @click="openEditCuota(m.id, m.name, m.quota_personal)"
-                      class="group inline-flex flex-col items-end gap-0.5 hover:text-emerald-300 transition-colors">
-                <div class="inline-flex items-center gap-1">
-                  <span x-show="m.quota_personal > 0" class="font-mono text-slate-300 group-hover:text-emerald-300 text-sm"
-                        x-text="'$' + m.quota_personal.toLocaleString('es-MX',{minimumFractionDigits:2})"></span>
-                  <span x-show="!(m.quota_personal > 0)" class="text-amber-500 text-xs font-semibold">Sin cuota</span>
-                  <svg class="w-3 h-3 text-slate-600 group-hover:text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <template x-if="m.member_type !== 'fuera'">
+                <button @click="openEditCuota(m.id, m.name, m.quota_personal)"
+                        class="group inline-flex flex-col items-end gap-0.5 hover:text-emerald-300 transition-colors">
+                  <div class="inline-flex items-center gap-1">
+                    <span x-show="m.quota_personal > 0" class="font-mono text-slate-300 group-hover:text-emerald-300 text-sm"
+                          x-text="'$' + m.quota_personal.toLocaleString('es-MX',{minimumFractionDigits:2})"></span>
+                    <span x-show="!(m.quota_personal > 0)" class="text-amber-500 text-xs font-semibold">Sin cuota</span>
+                    <svg class="w-3 h-3 text-slate-600 group-hover:text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                    </svg>
+                  </div>
+                  <!-- Quincena hasta la que ha aportado -->
+                  <span x-show="m.quincena_hasta > 0"
+                        class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded"
+                        :class="m.quincena_hasta >= (quincenaInfo?.caja.quincena_actual ?? 0)
+                          ? 'bg-emerald-500/10 text-emerald-400'
+                          : 'bg-amber-500/10 text-amber-400'"
+                        x-text="'hasta Q' + m.quincena_hasta"></span>
+                  <span x-show="!(m.quincena_hasta > 0)" class="text-[10px] text-slate-600">sin pagos</span>
+                </button>
+              </template>
+              <template x-if="m.member_type === 'fuera'">
+                <button @click="openEditTasa(m.id, m.name, m.interest_rate)"
+                        class="group inline-flex items-center gap-1 hover:text-purple-300 transition-colors"
+                        title="Tasa de interés para préstamos a este socio">
+                  <span x-show="m.interest_rate != null" class="font-mono text-purple-400 group-hover:text-purple-300 text-sm"
+                        x-text="(m.interest_rate * 100).toFixed(1) + '% / mes'"></span>
+                  <span x-show="m.interest_rate == null" class="text-slate-500 text-xs">
+                    Default (<span x-text="(cajaRates.external * 100).toFixed(1)"></span>%)
+                  </span>
+                  <svg class="w-3 h-3 text-slate-600 group-hover:text-purple-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                   </svg>
-                </div>
-                <!-- Quincena hasta la que ha aportado -->
-                <span x-show="m.quincena_hasta > 0"
-                      class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded"
-                      :class="m.quincena_hasta >= (quincenaInfo?.caja.quincena_actual ?? 0)
-                        ? 'bg-emerald-500/10 text-emerald-400'
-                        : 'bg-amber-500/10 text-amber-400'"
-                      x-text="'hasta Q' + m.quincena_hasta"></span>
-                <span x-show="!(m.quincena_hasta > 0)" class="text-[10px] text-slate-600">sin pagos</span>
-              </button>
+                </button>
+              </template>
             </td>
             <td class="px-5 py-3.5 text-right">
               <span class="font-mono font-semibold text-emerald-400"
@@ -329,6 +345,14 @@
                           d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                   </svg>
                 </a>
+                <button @click="openRetiro(m.id, m.name, m.savings_balance, m.active_loans, m.total_debt)"
+                        class="px-2 py-1.5 bg-slate-700/60 hover:bg-rose-900/60 text-slate-400 hover:text-rose-300 rounded-xl text-xs transition-colors"
+                        title="Retirar socio (Baja de la caja sin intereses)">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                  </svg>
+                </button>
               </div>
             </td>
           </tr>
@@ -890,6 +914,68 @@
     </div>
   </div>
 
+  <!-- ── Modal: Editar tasa de interés (socios externos) ───────────────────── -->
+  <div x-show="editTasa.open" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       @keydown.escape.window="editTasa.open = false">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="editTasa.open = false"></div>
+    <div class="relative bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-700/80 z-10"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         @click.stop>
+      <div class="px-6 py-5 border-b border-slate-700/60 flex items-start justify-between">
+        <div>
+          <h3 class="text-base font-semibold text-slate-100">Tasa de Interés</h3>
+          <p class="text-sm text-slate-400 mt-0.5" x-text="editTasa.memberName"></p>
+        </div>
+        <button @click="editTasa.open = false" class="text-slate-500 hover:text-slate-300 p-1 rounded-lg hover:bg-slate-700 mt-1">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1.5">
+            Tasa mensual (%) <span class="text-slate-500 font-normal">— aplica al crear préstamos a este socio</span>
+          </label>
+          <div class="relative">
+            <input type="number" x-model.number="editTasa.pct" step="0.1" min="0" max="100" placeholder="0.0"
+                   autofocus
+                   class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-purple-500/70
+                          rounded-xl pl-4 pr-8 py-2.5 text-slate-100 font-mono text-lg focus:outline-none
+                          focus:ring-2 focus:ring-purple-500/20 transition-all"/>
+            <span class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm">%</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1.5">
+            Tasa externa por defecto de la caja: <span class="text-purple-400" x-text="(cajaRates.external * 100).toFixed(1) + '%'"></span>.
+            <button type="button" @click="editTasa.pct = null"
+                    class="underline underline-offset-2 hover:text-slate-300 transition-colors">Usar default</button>
+          </p>
+        </div>
+      </div>
+      <div class="px-6 py-4 border-t border-slate-700/60 flex gap-3">
+        <button @click="editTasa.open = false"
+                class="flex-1 px-4 py-2.5 text-slate-300 text-sm font-medium rounded-xl bg-slate-700/50 hover:bg-slate-700 transition-colors">
+          Cancelar
+        </button>
+        <button @click="submitEditTasa()"
+                :disabled="editTasa.loading"
+                class="flex-1 px-5 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold
+                       transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-purple-500">
+          <span x-show="!editTasa.loading">Guardar</span>
+          <span x-show="editTasa.loading" class="flex items-center justify-center gap-2">
+            <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>Guardando…
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Modal: Al corriente todos ─────────────────────────────────────────── -->
   <div x-show="corrienteTodos.open" x-cloak
        class="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -994,7 +1080,32 @@
             </template>
           </div>
           <p class="text-xs text-slate-500 mt-2"
-             x-text="corrienteTodos.excluded.length + ' excluido(s) · ' + (members.length - corrienteTodos.excluded.length) + ' serán regularizados'"></p>
+             x-text="corrienteTodos.excluded.length + ' excluido(s) · ' + (members.length - corrienteTodos.excluded.length - adelantados.length) + ' serán regularizados'"></p>
+        </div>
+
+        <!-- Socios adelantados (se ignoran automáticamente) -->
+        <div x-show="adelantados.length > 0" x-cloak
+             class="bg-blue-900/15 border border-blue-700/25 rounded-xl p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <p class="text-sm font-medium text-blue-400">
+              <span x-text="adelantados.length"></span> socio<span x-show="adelantados.length !== 1">s</span> al corriente o adelantado<span x-show="adelantados.length !== 1">s</span> — se ignorarán
+            </p>
+          </div>
+          <p class="text-xs text-blue-400/60 mb-2">Ya pagaron hasta Q<span x-text="corrienteTodos.quincenaHasta"></span> o más. No se modificarán sus quincenas.</p>
+          <div class="max-h-32 overflow-y-auto space-y-1">
+            <template x-for="a in adelantados" :key="a.id">
+              <div class="flex items-center justify-between px-3 py-1.5 rounded-lg bg-blue-900/20">
+                <div class="flex items-center gap-2 min-w-0">
+                  <p class="text-sm text-slate-200 truncate" x-text="a.name"></p>
+                  <span class="text-xs text-slate-500" x-text="a.group"></span>
+                </div>
+                <span class="text-xs text-blue-400 font-mono flex-shrink-0" x-text="'Hasta Q' + a.maxQ"></span>
+              </div>
+            </template>
+          </div>
         </div>
       </div>
 
@@ -1008,7 +1119,7 @@
                 class="flex-1 px-5 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-semibold
                        transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-teal-500">
           <span x-show="!corrienteTodos.loading"
-                x-text="'Regularizar ' + (members.length - corrienteTodos.excluded.length) + ' socios'"></span>
+                x-text="'Regularizar ' + (members.length - corrienteTodos.excluded.length - adelantados.length) + ' socios'"></span>
           <span x-show="corrienteTodos.loading" class="flex items-center justify-center gap-2">
             <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -1016,6 +1127,115 @@
             </svg>Aplicando…
           </span>
         </button>
+      </div>
+    </div>
+  <!-- ── Modal: Retirar Socio (Baja sin intereses) ────────────────────────── -->
+  <div x-show="retiro.open" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       @keydown.escape.window="retiro.open = false">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="retiro.open = false"></div>
+    <div class="relative bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl border border-slate-700/80 z-10"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         @click.stop>
+      <div class="px-6 py-5 border-b border-slate-700/60 flex items-start justify-between">
+        <div>
+          <h3 class="text-base font-semibold text-rose-400 flex items-center gap-2">
+            <svg class="w-5 h-5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            Retirar Socio de la Caja
+          </h3>
+          <p class="text-sm text-slate-300 font-medium mt-1" x-text="retiro.memberName"></p>
+        </div>
+        <button @click="retiro.open = false" class="text-slate-500 hover:text-slate-300 p-1 rounded-lg hover:bg-slate-700">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="px-6 py-5 space-y-4">
+        <!-- Bloqueo si tiene deuda activa -->
+        <template x-if="retiro.activeLoans > 0 || retiro.totalDebt > 0">
+          <div class="p-4 bg-red-950/40 border border-red-800/50 rounded-xl space-y-2">
+            <p class="text-sm font-semibold text-red-300">⚠️ No se puede retirar: tiene deuda activa</p>
+            <p class="text-xs text-red-400/90 leading-relaxed">
+              El socio tiene <strong x-text="retiro.activeLoans + ' préstamo(s) activo(s)'"></strong> con un saldo deudor pendiente de <strong x-text="'$' + Number(retiro.totalDebt).toLocaleString('es-MX', {minimumFractionDigits: 2})"></strong>.
+            </p>
+            <p class="text-xs text-slate-400">
+              Debe liquidar todos sus préstamos antes de procesar su baja de la caja.
+            </p>
+          </div>
+        </template>
+
+        <!-- Información de liquidación si no tiene deuda -->
+        <template x-if="!(retiro.activeLoans > 0 || retiro.totalDebt > 0)">
+          <div class="space-y-4">
+            <div class="bg-slate-900/60 rounded-xl p-4 border border-slate-700/50 space-y-2">
+              <div class="flex justify-between items-center text-sm">
+                <span class="text-slate-400">Capital acumulado (Ahorros):</span>
+                <span class="font-mono font-bold text-emerald-400 text-base"
+                      x-text="'$' + Number(retiro.amount).toLocaleString('es-MX', {minimumFractionDigits: 2})"></span>
+              </div>
+              <div class="flex justify-between items-center text-sm pt-2 border-t border-slate-700/40">
+                <span class="text-slate-400">Intereses a entregar:</span>
+                <span class="font-mono font-semibold text-slate-400">$0.00 (Sin intereses)</span>
+              </div>
+              <div class="flex justify-between items-center text-sm pt-2 border-t border-slate-700/40">
+                <span class="text-slate-200 font-semibold">Total a devolver al socio:</span>
+                <span class="font-mono font-bold text-rose-300 text-lg"
+                      x-text="'$' + Number(retiro.amount).toLocaleString('es-MX', {minimumFractionDigits: 2})"></span>
+              </div>
+            </div>
+
+            <div class="p-3 bg-amber-950/30 border border-amber-800/40 rounded-xl text-xs text-amber-300/90 leading-relaxed">
+              <strong>Nota importante:</strong>
+              Al confirmar, se registrará la salida contable de los <strong>$<span x-text="Number(retiro.amount).toLocaleString('es-MX', {minimumFractionDigits: 2})"></span></strong> en el historial. El socio pasará a estado <em>inactivo</em>, dejará de contar en las métricas de socios activos y no participará en el reparto de rendimientos al cierre.
+            </div>
+
+            <div class="grid grid-cols-1 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1.5">Fecha del Retiro</label>
+                <input type="date" x-model="retiro.date"
+                       class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-rose-500/70
+                              rounded-xl px-3 py-2 text-slate-100 text-sm focus:outline-none transition-all
+                              [color-scheme:dark]"/>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1.5">Motivo / Observaciones (opcional)</label>
+                <input type="text" x-model="retiro.motivo" placeholder="Ej. Incidente / Baja voluntaria"
+                       class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-rose-500/70
+                              rounded-xl px-3 py-2 text-slate-100 text-sm focus:outline-none transition-all
+                              placeholder-slate-600"/>
+              </div>
+            </div>
+
+            <div x-show="retiro.error" class="p-3 bg-red-950/40 border border-red-800/50 rounded-xl text-xs text-red-300" x-text="retiro.error"></div>
+          </div>
+        </template>
+      </div>
+
+      <div class="px-6 py-4 border-t border-slate-700/60 flex gap-3">
+        <button @click="retiro.open = false"
+                class="flex-1 px-4 py-2.5 text-slate-300 text-sm font-medium rounded-xl bg-slate-700/50 hover:bg-slate-700 transition-colors">
+          Cancelar
+        </button>
+        <template x-if="!(retiro.activeLoans > 0 || retiro.totalDebt > 0)">
+          <button @click="submitRetiro()"
+                  :disabled="retiro.loading"
+                  class="flex-1 px-5 py-2.5 bg-rose-600 text-white rounded-xl text-sm font-semibold
+                         transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-rose-500 shadow-lg shadow-rose-900/30">
+            <span x-show="!retiro.loading">Confirmar Retiro</span>
+            <span x-show="retiro.loading" class="flex items-center justify-center gap-2">
+              <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+              </svg>Procesando…
+            </span>
+          </button>
+        </template>
       </div>
     </div>
   </div>
@@ -1058,6 +1278,8 @@ function membersApp(cajaId, initialMembers, initialGroups, currentCajaId, cajaRa
     lastCorrienteQ:  null,
     pendientesModal: { open: false, socios: [] },
     editCuota:       { open: false, loading: false, memberId: null, memberName: '', amount: 0 },
+    editTasa:        { open: false, loading: false, memberId: null, memberName: '', pct: null },
+    retiro:          { open: false, loading: false, error: null, memberId: null, memberName: '', amount: 0, activeLoans: 0, totalDebt: 0, motivo: '', date: '' },
     quotaAmounts:    [],
     recalcLoading:   false,
 
@@ -1088,6 +1310,28 @@ function membersApp(cajaId, initialMembers, initialGroups, currentCajaId, cajaRa
     get corrienteTodosList() {
       const q = this.corrienteTodos.search.toLowerCase();
       return q ? this.members.filter(m => m.name.toLowerCase().includes(q) || m.group.toLowerCase().includes(q)) : this.members;
+    },
+
+    get adelantados() {
+      if (!this.quincenaInfo) return [];
+      const hasta = this.corrienteTodos.quincenaHasta;
+      const pagadasMap = {};
+      for (const p of this.quincenaInfo.pagadas) {
+        if (!pagadasMap[p.member_id]) pagadasMap[p.member_id] = new Set();
+        pagadasMap[p.member_id].add(p.quincena_num);
+      }
+      const result = [];
+      for (const m of this.members) {
+        if (m.member_type !== 'dentro') continue;
+        if (this.corrienteTodos.excluded.includes(m.id)) continue;
+        const pagadas = pagadasMap[m.id] || new Set();
+        const allPaidToTarget = Array.from({length: hasta}, (_, i) => i + 1).every(q => pagadas.has(q));
+        const maxPagada = pagadas.size > 0 ? Math.max(...pagadas) : 0;
+        if (allPaidToTarget && maxPagada >= hasta) {
+          result.push({ id: m.id, name: m.name, group: m.group, maxQ: maxPagada });
+        }
+      }
+      return result;
     },
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1146,6 +1390,9 @@ function membersApp(cajaId, initialMembers, initialGroups, currentCajaId, cajaRa
             caja_id:        this.cajaId,
             quota_personal: this.newMember.quota_personal || 0,
             member_type:    this.newMember.member_type || 'dentro',
+            interest_rate:  this.newMember.member_type === 'fuera'
+              ? +(this.newMember.interest_rate_pct / 100).toFixed(4)
+              : null,
           }),
         });
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail ?? `Error ${res.status}`); }
@@ -1353,6 +1600,36 @@ function membersApp(cajaId, initialMembers, initialGroups, currentCajaId, cajaRa
       }
     },
 
+    // ── Editar tasa de interés personalizada (socios externos) ────────────────
+    openEditTasa(memberId, memberName, currentRate) {
+      this.editTasa = {
+        open: true, loading: false, memberId, memberName,
+        pct: currentRate != null ? +(currentRate * 100).toFixed(2) : null,
+      };
+    },
+
+    async submitEditTasa() {
+      this.editTasa.loading = true;
+      try {
+        const rate = this.editTasa.pct != null && this.editTasa.pct !== ''
+          ? +(this.editTasa.pct / 100).toFixed(4)
+          : null;
+        const res = await fetch(`/api/v1/members/${this.editTasa.memberId}/interest-rate`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ interest_rate: rate }),
+        });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail ?? `Error ${res.status}`); }
+        const m = this.members.find(m => m.id === this.editTasa.memberId);
+        if (m) m.interest_rate = rate;
+        this.editTasa.open = false;
+        window.__toast?.(`Tasa de ${this.editTasa.memberName} actualizada`, 'success');
+      } catch (err) {
+        window.__toast?.(err.message, 'error');
+        this.editTasa.loading = false;
+      }
+    },
+
     async recalcularAportaciones() {
       if (!confirm('¿Recalcular aportaciones? Esto corregirá los montos $0 de socios que ya tienen cuota asignada.')) return;
       this.recalcLoading = true;
@@ -1395,12 +1672,59 @@ function membersApp(cajaId, initialMembers, initialGroups, currentCajaId, cajaRa
         });
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail ?? `Error ${res.status}`); }
         const data = await res.json();
-        window.__toast?.(`${data.processed} socios al corriente hasta Q${data.quincena_hasta}`, 'success');
+        let msg = `${data.processed} socios al corriente hasta Q${data.quincena_hasta}`;
+        if (data.skipped_adelantados && data.skipped_adelantados.length > 0) {
+          msg += ` · ${data.skipped_adelantados.length} ignorado(s) por anticipar`;
+        }
+        window.__toast?.(msg, 'success');
         this.corrienteTodos.open = false;
         setTimeout(() => window.location.reload(), 600);
       } catch (err) {
         window.__toast?.(err.message, 'error');
         this.corrienteTodos.loading = false;
+      }
+    },
+
+    // ── Retirar socio ─────────────────────────────────────────────────────────
+    openRetiro(memberId, memberName, savingsBalance, activeLoans, totalDebt) {
+      this.retiro = {
+        open: true,
+        loading: false,
+        error: null,
+        memberId,
+        memberName,
+        amount: parseFloat(savingsBalance || 0),
+        activeLoans: parseInt(activeLoans || 0),
+        totalDebt: parseFloat(totalDebt || 0),
+        motivo: '',
+        date: new Date().toISOString().slice(0, 10),
+      };
+    },
+
+    async submitRetiro() {
+      if (!this.retiro.memberId || this.retiro.loading) return;
+      this.retiro.loading = true;
+      this.retiro.error = null;
+      try {
+        const res = await fetch(`/api/v1/members/${this.retiro.memberId}/retirar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            motivo: this.retiro.motivo || null,
+            fecha_retiro: this.retiro.date || null,
+          }),
+        });
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          throw new Error(e.detail ?? `Error ${res.status}`);
+        }
+        const data = await res.json();
+        this.retiro.open = false;
+        window.__toast?.(data.message || 'Socio retirado exitosamente', 'success');
+        setTimeout(() => window.location.reload(), 700);
+      } catch (err) {
+        this.retiro.error = err.message;
+        this.retiro.loading = false;
       }
     },
   };

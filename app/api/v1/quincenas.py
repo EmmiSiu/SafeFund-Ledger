@@ -335,12 +335,13 @@ def toggle_quincena(payload: ToggleRequest, db: Session = Depends(get_db)):
 def al_corriente_bulk(payload: AlCorrienteBulkRequest, db: Session = Depends(get_db)):
     """
     Marca como PAGADAS todas las quincenas hasta quincena_hasta para todos, excepto excluidos.
+    Socios que ya anticiparon (su quincena máxima pagada > quincena_hasta) se ignoran automáticamente.
     Crea registros de Aportación de tipo 'cuota' para que impacte el capital y ahorros.
     """
     caja = db.get(CajaConfig, payload.caja_id)
     if not caja:
         raise HTTPException(status_code=404, detail="Caja no encontrada.")
-    
+
     current_q = _get_current_quincena(caja.start_date, caja.total_quincenas)
     quincena_hasta = min(payload.quincena_hasta, current_q)
     cuota_global = Decimal(str(caja.quota_amount))
@@ -355,6 +356,7 @@ def al_corriente_bulk(payload: AlCorrienteBulkRequest, db: Session = Depends(get
     added_count = 0
     deleted_count = 0
     processed = 0
+    skipped_adelantados = []
 
     for m in members:
         if m.id in excluded_set or m.member_type != "dentro":
@@ -366,6 +368,18 @@ def al_corriente_bulk(payload: AlCorrienteBulkRequest, db: Session = Depends(get
             QuincenaPendiente.caja_id == payload.caja_id,
         ).all()
         registradas_nums = {r.quincena_num for r in registradas}
+
+        # Proteger a socios adelantados: si ya pagó todas las quincenas hasta
+        # quincena_hasta (o más allá), no lo tocamos
+        max_pagada = max(registradas_nums) if registradas_nums else 0
+        pagadas_hasta_target = all(q in registradas_nums for q in range(1, quincena_hasta + 1))
+        if pagadas_hasta_target and max_pagada >= quincena_hasta:
+            skipped_adelantados.append({
+                "member_id": m.id,
+                "member_name": m.name,
+                "max_quincena_pagada": max_pagada,
+            })
+            continue
 
         # Si no tiene cuota y se mandó cuota_default, asignarla permanentemente
         if m.quota_personal == 0 and payload.cuota_default > 0:
@@ -401,7 +415,8 @@ def al_corriente_bulk(payload: AlCorrienteBulkRequest, db: Session = Depends(get
         "processed": processed,
         "added": added_count,
         "deleted": deleted_count,
-        "quincena_hasta": quincena_hasta
+        "quincena_hasta": quincena_hasta,
+        "skipped_adelantados": skipped_adelantados,
     }
 
 

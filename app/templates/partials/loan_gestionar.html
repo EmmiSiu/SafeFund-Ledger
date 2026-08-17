@@ -192,6 +192,114 @@
       </button>
     </div>
 
+    <!-- Línea de tiempo del préstamo -->
+    <div class="px-6 py-5 border-b border-slate-700/40">
+      <button @click="toggleTimeline()"
+              class="w-full flex items-center gap-2 text-left">
+        <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <h3 class="text-sm font-semibold text-slate-300 flex-1">Línea de Tiempo del Préstamo</h3>
+        <svg class="w-4 h-4 text-slate-500 transition-transform duration-200"
+             :class="timeline.open ? 'rotate-180' : ''"
+             fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+
+      <div x-show="timeline.open" x-cloak x-transition class="mt-4">
+        <!-- Loading -->
+        <div x-show="timeline.loading" class="flex items-center justify-center py-8">
+          <svg class="animate-spin w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </div>
+
+        <template x-if="!timeline.loading && timeline.data">
+          <div>
+            <!-- Resumen de interés generado vs pagado -->
+            <div class="grid grid-cols-3 gap-2 mb-5">
+              <div class="bg-slate-900/60 rounded-xl p-3 border border-slate-700/40">
+                <p class="text-xs text-slate-500 mb-1">Interés Generado</p>
+                <p class="font-mono font-bold text-slate-200 text-sm leading-none"
+                   x-text="'$' + fmt(timeline.data.interes_generado_total)"></p>
+              </div>
+              <div class="bg-emerald-900/20 rounded-xl p-3 border border-emerald-700/20">
+                <p class="text-xs text-emerald-500/70 mb-1">Interés Pagado</p>
+                <p class="font-mono font-bold text-emerald-400 text-sm leading-none"
+                   x-text="'$' + fmt(timeline.data.interes_pagado_total)"></p>
+              </div>
+              <div class="rounded-xl p-3 border"
+                   :class="timeline.data.interes_pendiente > 0
+                     ? 'bg-amber-900/20 border-amber-700/20'
+                     : 'bg-slate-900/40 border-slate-700/30'">
+                <p class="text-xs mb-1" :class="timeline.data.interes_pendiente > 0 ? 'text-amber-500/70' : 'text-slate-500'">Interés Pendiente</p>
+                <p class="font-mono font-bold text-sm leading-none"
+                   :class="timeline.data.interes_pendiente > 0 ? 'text-amber-400' : 'text-slate-400'"
+                   x-text="'$' + fmt(timeline.data.interes_pendiente)"></p>
+              </div>
+            </div>
+
+            <!-- Timeline vertical -->
+            <div class="relative pl-2">
+              <template x-for="(ev, idx) in timeline.data.eventos" :key="idx">
+                <div class="relative pl-6 pb-5 last:pb-0"
+                     :class="idx < timeline.data.eventos.length - 1 ? 'border-l-2 border-slate-700/50 ml-[7px]' : 'ml-[7px]'">
+                  <!-- Dot -->
+                  <div class="absolute -left-[9px] top-0.5 w-4 h-4 rounded-full ring-4 ring-slate-800 flex items-center justify-center"
+                       :class="{
+                         'bg-slate-500': ev.tipo === 'apertura',
+                         'bg-amber-400': ev.tipo === 'interest_payment',
+                         'bg-emerald-400': ev.tipo === 'capital_payment',
+                         'bg-blue-400': ev.tipo === 'loan_increment',
+                         'bg-slate-600 ring-2 ring-dashed': ev.tipo === 'hoy',
+                       }"></div>
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <p class="text-sm font-medium"
+                           :class="{
+                             'text-slate-300': ev.tipo === 'apertura',
+                             'text-amber-300': ev.tipo === 'interest_payment',
+                             'text-emerald-300': ev.tipo === 'capital_payment',
+                             'text-blue-300': ev.tipo === 'loan_increment',
+                             'text-slate-500 italic': ev.tipo === 'hoy',
+                           }"
+                           x-text="{
+                             apertura: 'Apertura del préstamo',
+                             interest_payment: 'Pago de Interés',
+                             capital_payment: 'Abono a Capital',
+                             loan_increment: 'Incremento de Préstamo',
+                             hoy: 'Hoy',
+                           }[ev.tipo] || ev.tipo"></p>
+                        <span class="text-xs text-slate-600 font-mono" x-text="ev.fecha"></span>
+                      </div>
+                      <p class="text-xs text-slate-500 mt-1">
+                        <span x-show="ev.dias_desde_anterior > 0">
+                          <span x-text="ev.dias_desde_anterior"></span>d desde el evento anterior ·
+                          interés generado en el período:
+                          <span class="text-slate-400 font-mono" x-text="'$' + fmt(ev.interes_generado_periodo)"></span>
+                        </span>
+                      </p>
+                      <p x-show="ev.notas" class="text-xs text-slate-600 mt-0.5 truncate" x-text="ev.notas"></p>
+                    </div>
+                    <div class="text-right flex-shrink-0">
+                      <p x-show="ev.tipo !== 'apertura' && ev.tipo !== 'hoy'"
+                         class="font-mono font-semibold text-sm"
+                         :class="ev.tipo === 'interest_payment' ? 'text-amber-400' : 'text-emerald-400'"
+                         x-text="'$' + fmt(ev.monto)"></p>
+                      <p class="text-xs text-slate-500 mt-0.5" x-text="'Saldo: $' + fmt(ev.saldo_despues)"></p>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
     <!-- Historial de transacciones -->
     <div class="px-6 py-5" id="historial-inner-{{ loan.id }}">
       <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
@@ -212,11 +320,14 @@
           <div class="mt-0.5 w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0
                       {% if txn.transaction_type == 'interest_payment' %}bg-amber-500/10
                       {% elif txn.transaction_type == 'capital_payment' %}bg-emerald-500/10
+                      {% elif txn.transaction_type == 'loan_increment' %}bg-blue-500/10
                       {% else %}bg-slate-700/50{% endif %}">
             {% if txn.transaction_type == 'interest_payment' %}
             <span class="w-2 h-2 rounded-full bg-amber-400"></span>
             {% elif txn.transaction_type == 'capital_payment' %}
             <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            {% elif txn.transaction_type == 'loan_increment' %}
+            <span class="w-2 h-2 rounded-full bg-blue-400"></span>
             {% else %}
             <span class="w-2 h-2 rounded-full bg-slate-400"></span>
             {% endif %}
@@ -227,15 +338,78 @@
               <p class="text-sm font-medium
                          {% if txn.transaction_type == 'interest_payment' %}text-amber-300
                          {% elif txn.transaction_type == 'capital_payment' %}text-emerald-300
+                         {% elif txn.transaction_type == 'loan_increment' %}text-blue-300
                          {% else %}text-slate-300{% endif %}">
                 {% if txn.transaction_type == 'interest_payment' %}Pago de Interés
                 {% elif txn.transaction_type == 'capital_payment' %}Abono a Capital
+                {% elif txn.transaction_type == 'loan_increment' %}Incremento de Préstamo
                 {% else %}Ahorro{% endif %}
               </p>
               <p class="font-mono font-semibold text-slate-100 text-sm">${{ "{:,.2f}".format(txn.amount) }}</p>
             </div>
             <div class="flex items-center gap-2 mt-0.5">
-              <p class="text-xs text-slate-500">{{ txn.transaction_date }}</p>
+              <!-- Fecha: modo lectura -->
+              <div x-show="!(editingTxnId === {{ txn.id }} || deletingTxnId === {{ txn.id }})" class="flex items-center gap-1.5">
+                <p class="text-xs text-slate-500">{{ txn.transaction_date }}</p>
+                <button @click="startEditTxnDate({{ txn.id }}, '{{ txn.transaction_date }}')"
+                        class="text-slate-600 hover:text-emerald-400 transition-colors"
+                        title="Corregir fecha">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                  </svg>
+                </button>
+                <button @click="confirmDeleteTxn({{ txn.id }})"
+                        class="text-slate-600 hover:text-red-400 transition-colors"
+                        title="Eliminar movimiento">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
+              <!-- Fecha: modo edición -->
+              <div x-show="editingTxnId === {{ txn.id }}" x-cloak class="flex items-center gap-1.5">
+                <input type="date" x-model="editingTxnDate"
+                       class="bg-slate-800 border border-emerald-500/50 rounded-lg px-2 py-0.5
+                              text-xs text-slate-100 focus:outline-none [color-scheme:dark] w-[130px]"/>
+                <button @click="submitEditTxnDate()"
+                        :disabled="editingTxnLoading"
+                        class="text-emerald-400 hover:text-emerald-300 disabled:opacity-40"
+                        title="Guardar">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                  </svg>
+                </button>
+                <button @click="cancelEditTxnDate()"
+                        class="text-slate-500 hover:text-slate-300"
+                        title="Cancelar">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+              <!-- Eliminar transacción: confirmación inline -->
+              <div x-show="deletingTxnId === {{ txn.id }}" x-cloak class="flex items-center gap-1.5">
+                <span class="text-xs text-red-400 font-medium">¿Eliminar?</span>
+                <button @click="submitDeleteTxn()"
+                        :disabled="deletingTxnLoading"
+                        class="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white text-xs rounded-md
+                               font-semibold transition-colors disabled:opacity-40"
+                        title="Confirmar eliminar">
+                  <span x-show="!deletingTxnLoading">Sí</span>
+                  <svg x-show="deletingTxnLoading" class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                  </svg>
+                </button>
+                <button @click="cancelDeleteTxn()"
+                        class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs rounded-md
+                               font-medium transition-colors"
+                        title="Cancelar">
+                  No
+                </button>
+              </div>
               {% if txn.notes %}
               <span class="text-slate-700">·</span>
               <p class="text-xs text-slate-600 truncate">{{ txn.notes }}</p>
@@ -254,7 +428,7 @@
 
       <!-- Cambiar fecha de inicio -->
       <div class="mb-3">
-        <button @click="editingStartDate = !editingStartDate; confirmDelete = false"
+        <button @click="editingStartDate = !editingStartDate; confirmDelete = false; incrementing = false"
                 class="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
                        bg-slate-700/60 hover:bg-slate-600/80 text-slate-300 border border-slate-600/40
                        transition-colors text-left">
@@ -301,10 +475,102 @@
         </div>
       </div>
 
+      <!-- Incrementar préstamo -->
+      <div class="mb-3">
+        <button @click="incrementing = !incrementing; editingStartDate = false; confirmDelete = false"
+                class="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
+                       bg-slate-700/60 hover:bg-slate-600/80 text-slate-300 border border-slate-600/40
+                       transition-colors text-left">
+          <svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+          </svg>
+          <span class="flex-1">Incrementar préstamo</span>
+          <svg class="w-4 h-4 text-slate-500 transition-transform duration-200"
+               :class="incrementing ? 'rotate-180' : ''"
+               fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+
+        <div x-show="incrementing"
+             x-transition:enter="transition ease-out duration-150"
+             x-transition:enter-start="opacity-0 -translate-y-1"
+             x-transition:enter-end="opacity-100 translate-y-0"
+             class="mt-2 p-4 bg-slate-900/60 rounded-xl border border-slate-700/40 space-y-3">
+          <p class="text-xs text-slate-500 leading-relaxed">
+            Suma un monto adicional al préstamo. El saldo insoluto y el monto inicial se actualizan.
+            Los pagos de interés anteriores se conservan intactos.
+          </p>
+
+          <!-- Preview: nuevo saldo -->
+          <div x-show="incrementAmount > 0"
+               class="bg-slate-800/60 rounded-lg p-3 border border-slate-700/30 space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-500">Saldo actual</span>
+              <span class="font-mono text-slate-400" x-text="'$' + fmt(loan.outstanding_balance)"></span>
+            </div>
+            <div class="flex justify-between text-xs">
+              <span class="text-emerald-500">+ Incremento</span>
+              <span class="font-mono text-emerald-400" x-text="'$' + fmt(incrementAmount)"></span>
+            </div>
+            <div class="flex justify-between text-sm pt-1.5 border-t border-slate-700/40">
+              <span class="text-slate-300 font-medium">Nuevo saldo</span>
+              <span class="font-mono font-bold text-emerald-400"
+                    x-text="'$' + fmt(parseFloat(loan.outstanding_balance) + parseFloat(incrementAmount || 0))"></span>
+            </div>
+            <div class="flex justify-between text-xs pt-1">
+              <span class="text-amber-500/70">Nuevo interés / mes</span>
+              <span class="font-mono text-amber-400"
+                    x-text="'$' + fmt((parseFloat(loan.outstanding_balance) + parseFloat(incrementAmount || 0)) * parseFloat(loan.interest_rate))"></span>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Monto adicional</label>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-sm">$</span>
+              <input type="number" x-model.number="incrementAmount" step="0.01" min="0.01"
+                     placeholder="0.00"
+                     class="w-full bg-slate-800 border border-slate-600/60 focus:border-emerald-500/70
+                            rounded-xl pl-7 pr-3 py-2 text-slate-100 font-mono text-sm focus:outline-none
+                            transition-all placeholder-slate-600"/>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Notas (opcional)</label>
+            <input type="text" x-model="incrementNotes" placeholder="Motivo del incremento…"
+                   class="w-full bg-slate-800 border border-slate-600/60 focus:border-emerald-500/70
+                          rounded-xl px-3 py-2 text-slate-100 text-sm focus:outline-none transition-all
+                          placeholder-slate-600"/>
+          </div>
+          <div x-show="incrementError" class="text-xs text-red-400" x-text="incrementError"></div>
+          <div class="flex gap-2">
+            <button @click="incrementing = false; incrementAmount = 0; incrementNotes = ''; incrementError = null"
+                    class="flex-1 py-2 rounded-xl text-sm font-medium bg-slate-700/60
+                           hover:bg-slate-600 text-slate-300 transition-colors">
+              Cancelar
+            </button>
+            <button @click="submitIncrement()"
+                    :disabled="incrementLoading || incrementAmount <= 0"
+                    class="flex-1 py-2 rounded-xl text-sm font-semibold bg-emerald-600
+                           hover:bg-emerald-500 text-white transition-colors disabled:opacity-40">
+              <span x-show="!incrementLoading">Confirmar Incremento</span>
+              <span x-show="incrementLoading" class="flex items-center justify-center gap-2">
+                <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>Procesando…
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Eliminar préstamo -->
       <div>
         <button x-show="!confirmDelete"
-                @click="confirmDelete = true; editingStartDate = false"
+                @click="confirmDelete = true; editingStartDate = false; incrementing = false"
                 class="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
                        bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-700/30
                        transition-colors">

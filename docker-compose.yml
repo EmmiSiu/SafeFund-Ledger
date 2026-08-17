@@ -8,4 +8,5 @@ services:
       - ./data:/app/data
     environment:
       - DATABASE_URL=sqlite:///./data/safefund.db
+      - WATCHFILES_FORCE_POLLING=true
     restart: always

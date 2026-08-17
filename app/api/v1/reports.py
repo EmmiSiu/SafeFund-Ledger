@@ -8,12 +8,22 @@ from app.services.pdf_generator import generate_estado_cuenta, generate_reporte_
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
 
+_PDF_ENGINE_ERROR = (
+    "No se pudo generar el PDF: faltan las librerías nativas que necesita WeasyPrint "
+    "(Pango/GObject/Cairo) en este entorno. Si corres la app localmente en Windows, "
+    "instala el runtime de GTK3, o levanta el proyecto con `docker compose up` "
+    "(el Dockerfile ya incluye esas dependencias)."
+)
+
+
 @router.get("/estado-cuenta/{member_id}")
 def estado_cuenta_pdf(member_id: int, db: Session = Depends(get_db)):
     try:
         pdf = generate_estado_cuenta(member_id, db)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except OSError:
+        raise HTTPException(status_code=500, detail=_PDF_ENGINE_ERROR)
     return Response(
         content=pdf,
         media_type="application/pdf",
@@ -27,6 +37,8 @@ def reporte_caja_pdf(caja_id: int, db: Session = Depends(get_db)):
         pdf = generate_reporte_caja(caja_id, db)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except OSError:
+        raise HTTPException(status_code=500, detail=_PDF_ENGINE_ERROR)
     return Response(
         content=pdf,
         media_type="application/pdf",

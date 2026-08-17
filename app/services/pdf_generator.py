@@ -13,10 +13,10 @@ from jinja2 import Environment, FileSystemLoader
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.money import CENT
 from app.models.base import CajaConfig, Loan, Member, Transaction
 
 REPORTS_DIR = Path(__file__).parent.parent / "templates" / "reports"
-CENT = Decimal("0.01")
 
 
 def _jinja_env() -> Environment:
@@ -190,7 +190,7 @@ def generate_reporte_caja(caja_id: int, db: Session) -> bytes:
             {
                 "loan": loan,
                 "member_name": member.name if member else "—",
-                "group": member.group if member else "—",
+                "group": member.member_group.name if member and member.member_group else "—",
                 "monthly_interest": monthly_interest,
                 "last_interest_date": last_interest.transaction_date if last_interest else None,
                 "interest_current": interest_current,

@@ -30,9 +30,10 @@ function dashboardApp(cajaId) {
       const canvas = document.getElementById('growthChart');
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
       // Destroy previous instance on hot-reload
-      if (this.chart) { this.chart.destroy(); }
+      if (this.chart) { this.chart.destroy(); this.chart = null; }
 
       // Gradient fills
       const gradientSavings = ctx.createLinearGradient(0, 0, 0, 224);

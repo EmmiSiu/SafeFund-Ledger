@@ -68,6 +68,11 @@ class Member(Base):
     quota_personal: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0.00"
     )
+    # Tasa de interés mensual personalizada para préstamos a este socio.
+    # None = usar la tasa por defecto de la caja según member_type (interna/externa).
+    interest_rate: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(5, 4), nullable=True
+    )
     # Saldo acumulado de ahorros quincenales
     savings_balance: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0.00")
@@ -117,6 +122,9 @@ class Loan(Base):
 
 class Transaction(Base):
     __tablename__ = "transactions"
+    __table_args__ = (
+        Index("ix_transactions_loan_type_date", "loan_id", "transaction_type", "transaction_date"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     # Nullable: las transacciones de tipo "savings" no pertenecen a un préstamo
@@ -128,7 +136,7 @@ class Transaction(Base):
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
-    # "savings" | "interest_payment" | "capital_payment"
+    # "savings" | "interest_payment" | "capital_payment" | "loan_increment"
     transaction_type: Mapped[str] = mapped_column(String(30), nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

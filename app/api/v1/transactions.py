@@ -1,7 +1,12 @@
+from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.money import CENT
 from app.models.base import Loan, Member, Transaction
 from app.schemas.transactions import (
     CapitalReductionRequest,
@@ -14,6 +19,101 @@ from app.schemas.transactions import (
 from app.services.finance_engine import apply_payment
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
+
+
+class DeleteTransactionResponse(BaseModel):
+    deleted_transaction_id: int
+    transaction_type: str
+    amount: float
+    loan_id: int | None
+    loan_outstanding_balance: float | None
+    loan_status: str | None
+    loan_initial_amount: float | None
+
+
+@router.delete("/{txn_id}", response_model=DeleteTransactionResponse)
+def delete_transaction(txn_id: int, db: Session = Depends(get_db)):
+    """
+    Elimina una transacción y revierte su efecto en el préstamo asociado:
+    - interest_payment: solo elimina (no afecta saldo)
+    - capital_payment: restaura outstanding_balance; si el préstamo estaba 'paid', lo reactiva
+    - loan_increment: resta del outstanding_balance e initial_amount
+    - savings: no permitido desde este endpoint
+    """
+    txn = db.get(Transaction, txn_id)
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transacción no encontrada.")
+
+    if txn.transaction_type == "savings":
+        raise HTTPException(
+            status_code=400,
+            detail="No se pueden eliminar transacciones de ahorro desde este endpoint.",
+        )
+
+    amount = Decimal(str(txn.amount))
+    loan = db.get(Loan, txn.loan_id) if txn.loan_id else None
+
+    try:
+        if txn.transaction_type == "capital_payment" and loan:
+            # Restaurar el monto abonado al saldo insoluto
+            old_balance = Decimal(str(loan.outstanding_balance))
+            loan.outstanding_balance = (old_balance + amount).quantize(CENT, rounding=ROUND_HALF_UP)
+            # Si el préstamo estaba liquidado, reactivarlo
+            if loan.status == "paid":
+                loan.status = "active"
+
+        elif txn.transaction_type == "loan_increment" and loan:
+            # Restar el incremento del saldo y del monto inicial
+            old_balance = Decimal(str(loan.outstanding_balance))
+            old_initial = Decimal(str(loan.initial_amount))
+            new_balance = (old_balance - amount).quantize(CENT, rounding=ROUND_HALF_UP)
+            new_initial = (old_initial - amount).quantize(CENT, rounding=ROUND_HALF_UP)
+            if new_balance < Decimal("0") or new_initial < Decimal("0"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se puede eliminar: el saldo resultante sería negativo.",
+                )
+            loan.outstanding_balance = new_balance
+            loan.initial_amount = new_initial
+
+        # interest_payment: no modifica saldo, solo se elimina la transacción
+
+        db.delete(txn)
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al eliminar transacción: {exc}")
+
+    if loan:
+        db.refresh(loan)
+
+    return DeleteTransactionResponse(
+        deleted_transaction_id=txn_id,
+        transaction_type=txn.transaction_type,
+        amount=float(amount),
+        loan_id=loan.id if loan else None,
+        loan_outstanding_balance=float(loan.outstanding_balance) if loan else None,
+        loan_status=loan.status if loan else None,
+        loan_initial_amount=float(loan.initial_amount) if loan else None,
+    )
+
+
+class UpdateFechaRequest(BaseModel):
+    transaction_date: date
+
+
+@router.patch("/{txn_id}/fecha", response_model=TransactionRead)
+def update_transaction_date(txn_id: int, payload: UpdateFechaRequest, db: Session = Depends(get_db)):
+    """Corrige la fecha de un movimiento existente. Solo modifica la fecha, nada más."""
+    txn = db.get(Transaction, txn_id)
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transacción no encontrada.")
+    txn.transaction_date = payload.transaction_date
+    db.commit()
+    db.refresh(txn)
+    return txn
 
 
 @router.post("/payment", response_model=PaymentResponse)
@@ -83,19 +183,16 @@ def register_payment(payload: PaymentRequest, db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
 )
 def capital_reduction(payload: CapitalReductionRequest, db: Session = Depends(get_db)):
-    from decimal import Decimal as _D, ROUND_HALF_UP
-
     loan = db.get(Loan, payload.loan_id)
     if not loan:
         raise HTTPException(status_code=404, detail="Préstamo no encontrado.")
     if loan.status != "active":
         raise HTTPException(status_code=400, detail="El préstamo no está activo.")
 
-    CENT = _D("0.01")
-    balance = _D(str(loan.outstanding_balance))
+    balance = Decimal(str(loan.outstanding_balance))
     capital_paid = min(payload.amount, balance).quantize(CENT, rounding=ROUND_HALF_UP)
     new_balance = (balance - capital_paid).quantize(CENT, rounding=ROUND_HALF_UP)
-    fully_paid = new_balance == _D("0")
+    fully_paid = new_balance == Decimal("0")
 
     t = Transaction(
         loan_id=loan.id,

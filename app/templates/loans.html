@@ -15,9 +15,9 @@
       <h1 class="text-xl font-semibold text-slate-100">Préstamos</h1>
       <p class="text-sm text-slate-500 mt-0.5">{{ caja_name }}</p>
     </div>
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-2 flex-wrap">
       <button @click="openNewLoan()"
-              class="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500
+              class="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500
                      text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-emerald-900/30">
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -29,32 +29,80 @@
         <span class="font-mono font-semibold text-emerald-400"
               x-text="'$' + formatAmount(filtered.reduce((s,l) => s + parseFloat(l.outstanding_balance), 0))"></span>
       </div>
-      <div class="relative">
-        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none"
-             fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
-        </svg>
-        <input type="text" x-model="search" placeholder="Buscar socio…"
-               class="w-48 bg-slate-800/80 border border-slate-700/60 focus:border-emerald-500/60
-                      rounded-xl pl-9 pr-4 py-2 text-sm text-slate-200 placeholder-slate-500
-                      focus:outline-none transition-colors"/>
+      <!-- Tabs: Vista (solo en activos) -->
+      <div x-show="activeTab === 'activos'" class="flex gap-1 bg-slate-800/80 rounded-xl p-0.5 border border-slate-700/50">
+        <button @click="viewMode = 'individual'"
+                :class="viewMode === 'individual' ? 'bg-slate-700 text-slate-100' : 'text-slate-400 hover:text-slate-200'"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">Individual</button>
+        <button @click="viewMode = 'grouped'"
+                :class="viewMode === 'grouped' ? 'bg-slate-700 text-slate-100' : 'text-slate-400 hover:text-slate-200'"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">Por Socio</button>
       </div>
-      <!-- Filtro tipo -->
-      <select x-model="typeFilter"
-              class="bg-slate-800/80 border border-slate-700/60 focus:border-emerald-500/60
-                     rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none
-                     transition-colors [color-scheme:dark]">
-        <option value="">Todos</option>
-        <option value="internal">Internos</option>
-        <option value="external">Externos</option>
-      </select>
     </div>
+  </div>
+
+  <!-- ── Tabs: Activos / Liquidados ──────────────────────────────────────────── -->
+  <div class="flex gap-1 bg-slate-800/80 rounded-xl p-0.5 border border-slate-700/50 mb-5 w-fit">
+    <button @click="switchTab('activos')"
+            :class="activeTab === 'activos' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+            class="px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+      Activos
+      <span class="ml-1 text-xs opacity-70" x-text="'(' + loans.length + ')'"></span>
+    </button>
+    <button @click="switchTab('liquidados')"
+            :class="activeTab === 'liquidados' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+            class="px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+      Liquidados
+      <span class="ml-1 text-xs opacity-70" x-text="'(' + liquidados.length + ')'"></span>
+    </button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB: ACTIVOS                                                             -->
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <div x-show="activeTab === 'activos'">
+
+  <!-- ── Filtros ───────────────────────────────────────────────────────────────── -->
+  <div class="flex items-center gap-2 flex-wrap mb-5">
+    <div class="relative">
+      <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none"
+           fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
+      </svg>
+      <input type="text" x-model="search" placeholder="Buscar socio…"
+             class="w-48 bg-slate-800/80 border border-slate-700/60 focus:border-emerald-500/60
+                    rounded-xl pl-9 pr-4 py-2 text-sm text-slate-200 placeholder-slate-500
+                    focus:outline-none transition-colors"/>
+    </div>
+    <select x-model="typeFilter"
+            class="bg-slate-800/80 border border-slate-700/60 focus:border-emerald-500/60
+                   rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none
+                   transition-colors [color-scheme:dark]">
+      <option value="">Todos</option>
+      <option value="internal">Internos</option>
+      <option value="external">Externos</option>
+    </select>
+    <div class="flex items-center gap-1.5 text-xs text-slate-500">
+      <span>Desde:</span>
+      <input type="date" x-model="dateFrom"
+             class="bg-slate-800/80 border border-slate-700/60 focus:border-emerald-500/60
+                    rounded-xl px-2.5 py-2 text-sm text-slate-200 focus:outline-none transition-colors [color-scheme:dark]"/>
+      <span>Hasta:</span>
+      <input type="date" x-model="dateTo"
+             class="bg-slate-800/80 border border-slate-700/60 focus:border-emerald-500/60
+                    rounded-xl px-2.5 py-2 text-sm text-slate-200 focus:outline-none transition-colors [color-scheme:dark]"/>
+    </div>
+    <button x-show="dateFrom || dateTo || typeFilter || search"
+            @click="search = ''; typeFilter = ''; dateFrom = ''; dateTo = ''"
+            class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+      Limpiar filtros
+    </button>
   </div>
 
   <!-- ── Métricas band (HTMX) ─────────────────────────────────────────────────── -->
   <div id="metrics-band"
        hx-get="/loans/metrics-partial?caja_id={{ current_caja_id }}"
-       hx-trigger="load, refreshMetrics from:body"
+       hx-trigger="load, refreshMetrics"
        hx-swap="innerHTML"
        class="mb-5">
     <!-- Skeleton -->
@@ -65,132 +113,851 @@
     </div>
   </div>
 
-  <!-- ── Tabla de préstamos ───────────────────────────────────────────────────── -->
-  <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 overflow-hidden">
+  <!-- ── Panel: Regularizar Intereses a Todos ──────────────────────────────────── -->
+  <div class="mb-5 bg-slate-800/60 rounded-2xl border border-slate-700/50 overflow-hidden">
+    <button @click="regBulk.open ? regBulk.open = false : openRegBulk()"
+            class="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-700/20 transition-colors text-left">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+          <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm font-semibold text-slate-100">Regularizar Intereses a Todos</p>
+          <p class="text-xs text-slate-500">Registrar pago de interés mensual para todos los préstamos activos</p>
+        </div>
+      </div>
+      <svg class="w-4 h-4 text-slate-500 transition-transform duration-200"
+           :class="regBulk.open ? 'rotate-180' : ''"
+           fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+      </svg>
+    </button>
+
+    <div x-show="regBulk.open" x-cloak x-transition
+         class="border-t border-slate-700/40 px-5 py-5 space-y-5">
+
+      <!-- Info: fechas automáticas -->
+      <div class="bg-slate-900/40 rounded-xl border border-slate-700/40 px-4 py-3">
+        <p class="text-xs text-slate-400">
+          Cada préstamo se regulariza con su propia fecha de cobro basada en el día de inicio.
+          Préstamos cuyo día de cobro aún no llega este mes se omiten automáticamente.
+        </p>
+      </div>
+
+      <!-- Notas -->
+      <div>
+        <label class="block text-sm font-medium text-slate-300 mb-1.5">Notas (opcional)</label>
+        <input type="text" x-model="regBulk.notas" placeholder="Ej: Regularización junio 2026"
+               class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
+                      rounded-xl px-4 py-2.5 text-slate-100 text-sm focus:outline-none transition-all placeholder-slate-600"/>
+      </div>
+
+      <!-- Excepto a: buscador -->
+      <div>
+        <label class="block text-sm font-medium text-slate-300 mb-1.5">Excepto a:</label>
+        <div class="relative">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none"
+               fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
+          </svg>
+          <input type="text" x-model="regBulk.excludeSearch"
+                 @input.debounce.300ms="searchExclude()"
+                 placeholder="Buscar socio para excluir..."
+                 class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
+                        rounded-xl pl-9 pr-4 py-2.5 text-slate-100 text-sm focus:outline-none transition-all placeholder-slate-600"/>
+          <svg x-show="regBulk.searchLoading" class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 animate-spin"
+               fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </div>
+
+        <!-- Resultados de búsqueda -->
+        <div x-show="regBulk.excludeResults.length > 0" x-cloak
+             class="mt-2 bg-slate-900 border border-slate-700/60 rounded-xl overflow-hidden shadow-xl max-h-64 overflow-y-auto">
+          <template x-for="member in regBulk.excludeResults" :key="member.member_id">
+            <div class="border-b border-slate-700/30 last:border-0">
+              <!-- Si tiene 1 solo préstamo -->
+              <template x-if="member.loans.length === 1">
+                <button type="button"
+                        @click="toggleExcludeLoan(member.loans[0], member.member_name)"
+                        class="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-700/40 transition-colors text-left">
+                  <div class="flex items-center gap-3">
+                    <div class="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors"
+                         :class="isLoanExcluded(member.loans[0].loan_id)
+                           ? 'bg-red-500 border-red-500'
+                           : 'border-slate-600'">
+                      <svg x-show="isLoanExcluded(member.loans[0].loan_id)" class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <p class="text-sm text-slate-200 font-medium" x-text="member.member_name"></p>
+                      <p class="text-xs text-slate-500" x-text="member.group_name + ' · Saldo: $' + formatAmount(member.loans[0].outstanding_balance) + ' · Int/mes: $' + formatAmount(member.loans[0].interes_mensual)"></p>
+                    </div>
+                  </div>
+                  <span class="text-xs px-2 py-0.5 rounded-lg"
+                        :class="member.loans[0].loan_type === 'internal' ? 'bg-blue-500/10 text-blue-400' : 'bg-purple-500/10 text-purple-400'"
+                        x-text="member.loans[0].loan_type === 'internal' ? 'Int' : 'Ext'"></span>
+                </button>
+              </template>
+              <!-- Si tiene múltiples préstamos -->
+              <template x-if="member.loans.length > 1">
+                <div>
+                  <div class="px-4 py-2.5 bg-slate-800/40">
+                    <p class="text-sm text-slate-200 font-medium" x-text="member.member_name"></p>
+                    <p class="text-xs text-slate-500" x-text="member.group_name + ' · ' + member.loans.length + ' préstamos activos'"></p>
+                  </div>
+                  <template x-for="loan in member.loans" :key="loan.loan_id">
+                    <button type="button"
+                            @click="toggleExcludeLoan(loan, member.member_name)"
+                            class="w-full flex items-center justify-between px-4 pl-8 py-2.5 hover:bg-slate-700/40 transition-colors text-left border-t border-slate-700/20">
+                      <div class="flex items-center gap-3">
+                        <div class="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors"
+                             :class="isLoanExcluded(loan.loan_id)
+                               ? 'bg-red-500 border-red-500'
+                               : 'border-slate-600'">
+                          <svg x-show="isLoanExcluded(loan.loan_id)" class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <p class="text-xs text-slate-400">
+                            <span class="font-mono">#<span x-text="loan.loan_id"></span></span>
+                            <span class="ml-1" x-text="loan.start_date"></span>
+                            <span class="ml-1 px-1.5 py-0.5 rounded text-xs"
+                                  :class="loan.loan_type === 'internal' ? 'bg-blue-500/10 text-blue-400' : 'bg-purple-500/10 text-purple-400'"
+                                  x-text="loan.loan_type === 'internal' ? 'Int' : 'Ext'"></span>
+                          </p>
+                          <p class="text-xs text-slate-500 mt-0.5">
+                            Saldo: <span class="text-slate-300 font-mono" x-text="'$' + formatAmount(loan.outstanding_balance)"></span>
+                            · Int/mes: <span class="text-amber-400 font-mono" x-text="'$' + formatAmount(loan.interes_mensual)"></span>
+                            · <span class="text-slate-500" x-text="loan.dias_sin_pago_interes + 'd sin pago'"></span>
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Excluidos seleccionados (chips) -->
+      <div x-show="regBulk.excludedLoans.length > 0" class="flex flex-wrap gap-2">
+        <template x-for="exc in regBulk.excludedLoans" :key="exc.loan_id">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-900/20 text-red-400 rounded-xl text-xs border border-red-700/30">
+            <span x-text="exc.member_name + ' #' + exc.loan_id"></span>
+            <span class="text-red-500/60 font-mono" x-text="'$' + formatAmount(exc.interes_mensual)"></span>
+            <button @click="removeExcluded(exc.loan_id)" class="hover:text-red-300 transition-colors">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </span>
+        </template>
+      </div>
+
+      <!-- No vencidos (se omiten automáticamente) -->
+      <div x-show="regBulkPreview.noVencidos.length > 0" x-cloak
+           class="bg-blue-900/15 border border-blue-700/25 rounded-xl p-4">
+        <div class="flex items-center gap-2 mb-2">
+          <svg class="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <p class="text-sm font-medium text-blue-400">
+            <span x-text="regBulkPreview.noVencidos.length"></span> préstamo<span x-show="regBulkPreview.noVencidos.length !== 1">s</span> aún no vence<span x-show="regBulkPreview.noVencidos.length !== 1">n</span> este mes
+          </p>
+        </div>
+        <p class="text-xs text-blue-400/60 mb-2">Su día de cobro no ha llegado. Se omitirán de la regularización.</p>
+        <div class="max-h-32 overflow-y-auto space-y-1">
+          <template x-for="nv in regBulkPreview.noVencidos" :key="nv.id">
+            <div class="flex items-center justify-between px-3 py-1.5 rounded-lg bg-blue-900/20">
+              <div class="flex items-center gap-2 min-w-0">
+                <p class="text-sm text-slate-200 truncate" x-text="nv.member_name"></p>
+                <span class="text-xs font-mono text-slate-500" x-text="'#' + nv.id"></span>
+              </div>
+              <div class="flex items-center gap-2 flex-shrink-0">
+                <span class="text-xs text-amber-400 font-mono" x-text="'$' + formatAmount(calcMonthlyInterest(nv))"></span>
+                <span class="text-xs text-blue-400 font-mono" x-text="'Día ' + nv.diaCobro"></span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Preview + Botón -->
+      <div class="flex items-center justify-between bg-slate-900/60 rounded-xl border border-slate-700/40 px-5 py-4">
+        <div>
+          <p class="text-sm text-slate-300">
+            <span class="font-semibold text-emerald-400" x-text="regBulkPreview.count"></span> préstamos a regularizar
+          </p>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Total intereses: <span class="font-mono font-semibold text-amber-400" x-text="'$' + formatAmount(regBulkPreview.totalIntereses)"></span>
+          </p>
+        </div>
+        <button @click="submitRegBulk()"
+                :disabled="regBulk.loading || regBulkPreview.count === 0"
+                class="px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-sm font-semibold
+                       transition-colors shadow-lg shadow-amber-900/30
+                       disabled:opacity-40 disabled:cursor-not-allowed">
+          <span x-show="!regBulk.loading">Regularizar</span>
+          <span x-show="regBulk.loading" class="flex items-center gap-2">
+            <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>Procesando...
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Panel: Duplicados de Interés por Purgar ───────────────────────────────── -->
+  <div x-show="duplicados.grupos.length > 0" x-cloak
+       class="mb-5 bg-slate-800/60 rounded-2xl border border-red-700/40 overflow-hidden">
+    <button @click="duplicados.open = !duplicados.open"
+            class="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-700/20 transition-colors text-left">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
+          <svg class="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm font-semibold text-slate-100">
+            Duplicados de Interés por Purgar
+            <span class="ml-1 text-xs px-2 py-0.5 rounded-lg bg-red-500/15 text-red-400 font-semibold"
+                  x-text="duplicados.grupos.length"></span>
+          </p>
+          <p class="text-xs text-slate-500">
+            <span x-text="duplicadosTotalTxns"></span> pago(s) de interés separados por menos de ~25 días en el mismo préstamo
+          </p>
+        </div>
+      </div>
+      <svg class="w-4 h-4 text-slate-500 transition-transform duration-200"
+           :class="duplicados.open ? 'rotate-180' : ''"
+           fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+      </svg>
+    </button>
+
+    <div x-show="duplicados.open" x-cloak x-transition
+         class="border-t border-slate-700/40 px-5 py-5 space-y-4">
+      <p class="text-xs text-slate-400">
+        Se marcó la transacción más antigua de cada grupo para conservar (probablemente la legítima) y el resto
+        para purgar. Revisa y ajusta la selección antes de purgar — la acción elimina las transacciones marcadas
+        sin afectar el saldo insoluto del préstamo (los pagos de interés no reducen capital).
+      </p>
+
+      <div class="space-y-3 max-h-96 overflow-y-auto">
+        <template x-for="g in duplicados.grupos" :key="g.loan_id + '-' + g.transacciones[0].id">
+          <div class="bg-slate-900/40 rounded-xl border border-slate-700/40 overflow-hidden">
+            <div class="px-4 py-2.5 bg-slate-800/40 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <p class="text-sm text-slate-200 font-medium" x-text="g.member_name"></p>
+                <span class="text-xs text-slate-500 font-mono">Préstamo #<span x-text="g.loan_id"></span></span>
+                <span class="text-xs px-1.5 py-0.5 rounded font-medium"
+                      :class="g.loan_type === 'internal' ? 'bg-blue-500/10 text-blue-400' : 'bg-purple-500/10 text-purple-400'"
+                      x-text="g.loan_type === 'internal' ? 'Int' : 'Ext'"></span>
+              </div>
+              <span class="text-xs font-mono text-red-400" x-text="'$' + formatAmount(g.total_monto) + ' en el grupo'"></span>
+            </div>
+            <div>
+              <template x-for="t in g.transacciones" :key="t.id">
+                <button type="button"
+                        @click="toggleDuplicadoSelection(t.id)"
+                        class="w-full flex items-center justify-between px-4 pl-6 py-2.5 hover:bg-slate-700/30 transition-colors text-left border-t border-slate-700/20">
+                  <div class="flex items-center gap-3">
+                    <div class="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors"
+                         :class="isDuplicadoSelected(t.id) ? 'bg-red-500 border-red-500' : 'border-slate-600'">
+                      <svg x-show="isDuplicadoSelected(t.id)" class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <p class="text-xs text-slate-300">
+                        <span x-text="t.fecha"></span>
+                        <span x-show="t.id === g.sugerido_conservar_id"
+                              class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400">SUGERIDO: CONSERVAR</span>
+                      </p>
+                      <p x-show="t.notas" class="text-xs text-slate-600 mt-0.5" x-text="t.notas"></p>
+                    </div>
+                  </div>
+                  <span class="font-mono text-sm text-amber-400 flex-shrink-0" x-text="'$' + formatAmount(t.monto)"></span>
+                </button>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div class="flex items-center justify-between bg-slate-900/60 rounded-xl border border-slate-700/40 px-5 py-4">
+        <div>
+          <p class="text-sm text-slate-300">
+            <span class="font-semibold text-red-400" x-text="duplicados.selected.length"></span> transacción(es) seleccionada(s) para purgar
+          </p>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Total a purgar: <span class="font-mono font-semibold text-red-400" x-text="'$' + formatAmount(duplicadosSelectedTotal)"></span>
+          </p>
+        </div>
+        <button @click="purgeSelectedDuplicados()"
+                :disabled="duplicados.purging || duplicados.selected.length === 0"
+                class="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-sm font-semibold
+                       transition-colors shadow-lg shadow-red-900/30
+                       disabled:opacity-40 disabled:cursor-not-allowed">
+          <span x-show="!duplicados.purging">Purgar Seleccionados</span>
+          <span x-show="duplicados.purging" class="flex items-center gap-2">
+            <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>Purgando...
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- VISTA INDIVIDUAL                                                         -->
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <div x-show="viewMode === 'individual'" class="bg-slate-800/60 rounded-2xl border border-slate-700/50 overflow-hidden">
+    <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-slate-700/60 bg-slate-900/40">
           <th class="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest">Socio</th>
+          <th class="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden lg:table-cell">Grupo</th>
+          <th class="text-center px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden md:table-cell">Inicio</th>
           <th class="text-right px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden md:table-cell">Capital</th>
           <th class="text-right px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest">Saldo Insoluto</th>
-          <th class="text-center px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden lg:table-cell">Progreso</th>
-          <th class="text-right px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden lg:table-cell">Interés / Mes</th>
+          <th class="text-right px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden lg:table-cell">Int / Mes</th>
           <th class="text-center px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden sm:table-cell">Tipo</th>
-          <th class="text-center px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden md:table-cell">Interés</th>
-          <th class="px-5 py-3 w-52"></th>
+          <th class="text-center px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden md:table-cell">Estado</th>
+          <th class="px-5 py-3 w-44"></th>
         </tr>
       </thead>
       <tbody>
         <template x-for="loan in filtered" :key="loan.id">
           <tr class="border-b border-slate-700/30 hover:bg-slate-700/20 transition-colors">
-
-            <td class="px-5 py-4">
+            <td class="px-5 py-3.5">
               <p class="font-medium text-slate-100 leading-tight" x-text="loan.member_name"></p>
               <p class="text-xs text-slate-500 mt-0.5"
                  x-text="'#' + loan.id + '  ·  ' + (parseFloat(loan.interest_rate)*100).toFixed(0) + '% / mes'"></p>
             </td>
-
-            <td class="px-5 py-4 text-right font-mono text-slate-500 hidden md:table-cell"
+            <td class="px-5 py-3.5 hidden lg:table-cell">
+              <span class="text-xs text-slate-400" x-text="loan.group_name || ''"></span>
+            </td>
+            <td class="px-5 py-3.5 text-center hidden md:table-cell">
+              <span class="text-xs text-slate-500 font-mono" x-text="loan.start_date"></span>
+            </td>
+            <td class="px-5 py-3.5 text-right font-mono text-slate-500 hidden md:table-cell"
                 x-text="'$' + formatAmount(loan.initial_amount)"></td>
-
-            <td class="px-5 py-4 text-right">
-              <div class="flex items-center justify-end gap-2">
-                <span x-show="loan._saving"
-                      class="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></span>
-                <span class="font-mono font-semibold text-emerald-400 text-base"
-                      x-text="'$' + formatAmount(loan.outstanding_balance)"></span>
-              </div>
+            <td class="px-5 py-3.5 text-right">
+              <span class="font-mono font-semibold text-emerald-400"
+                    x-text="'$' + formatAmount(loan.outstanding_balance)"></span>
             </td>
-
-            <td class="px-5 py-4 hidden lg:table-cell">
-              <div class="w-28">
-                <div class="flex justify-between text-xs text-slate-500 mb-1">
-                  <span>Pagado</span>
-                  <span x-text="paidPct(loan) + '%'"></span>
-                </div>
-                <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                  <div class="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-500"
-                       :style="'width:' + paidPct(loan) + '%'"></div>
-                </div>
-              </div>
-            </td>
-
-            <td class="px-5 py-4 text-right font-mono text-amber-400/80 hidden lg:table-cell"
+            <td class="px-5 py-3.5 text-right font-mono text-amber-400/80 hidden lg:table-cell"
                 x-text="'$' + formatAmount(calcMonthlyInterest(loan))"></td>
-
-            <td class="px-5 py-4 text-center hidden sm:table-cell">
-              <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium"
+            <td class="px-5 py-3.5 text-center hidden sm:table-cell">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium"
                     :class="loan.loan_type === 'internal'
                       ? 'bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20'
                       : 'bg-purple-500/10 text-purple-400 ring-1 ring-purple-500/20'"
                     x-text="loan.loan_type === 'internal' ? 'Interno' : 'Externo'"></span>
             </td>
-
-            <td class="px-5 py-4 text-center hidden md:table-cell">
-              <template x-if="loan.interest_paid_month">
-                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium
-                             bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
-                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>Al corriente
-                </span>
-              </template>
-              <template x-if="!loan.interest_paid_month">
-                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium
-                             bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20">
-                  <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Pendiente
-                </span>
-              </template>
+            <td class="px-5 py-3.5 text-center hidden md:table-cell">
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium"
+                    :class="loan.interest_paid_month
+                      ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
+                      : 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20'"
+                    x-text="loan.interest_paid_month ? 'Al corriente' : 'Pendiente'"></span>
             </td>
-
-            <!-- Acciones -->
-            <td class="px-5 py-4 text-right">
-              <div class="flex items-center justify-end gap-2">
+            <td class="px-5 py-3.5 text-right">
+              <div class="flex items-center justify-end gap-1.5">
                 <button @click="openInterestModal(loan)"
                         :class="loan.interest_paid_month
                           ? 'bg-slate-700/60 hover:bg-slate-700 text-slate-400'
-                          : 'bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white shadow-sm shadow-amber-900/30'"
-                        class="px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors">
-                  Pagar Int.
-                </button>
+                          : 'bg-amber-600 hover:bg-amber-500 text-white shadow-sm shadow-amber-900/30'"
+                        class="px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors">Int.</button>
                 <button @click="openCapitalModal(loan)"
-                        class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700
-                               text-white rounded-xl text-xs font-semibold transition-colors
-                               shadow-sm shadow-emerald-900/30">
-                  Abonar
-                </button>
+                        class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm shadow-emerald-900/30">Cap.</button>
                 <button @click="openGestionar(loan)"
-                        class="px-3 py-1.5 bg-slate-700/80 hover:bg-slate-600 text-slate-200
-                               rounded-xl text-xs font-semibold transition-colors border border-slate-600/50">
-                  Gestionar
+                        class="px-2.5 py-1.5 bg-slate-700/80 hover:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold transition-colors border border-slate-600/50">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                  </svg>
                 </button>
               </div>
             </td>
-
           </tr>
         </template>
-
         <tr x-show="loans.length === 0">
-          <td colspan="8" class="px-6 py-16 text-center">
+          <td colspan="9" class="px-6 py-16 text-center">
             <p class="text-slate-400 font-medium">No hay préstamos activos</p>
-            <p class="text-slate-600 text-sm mt-1">Esta caja no tiene préstamos en curso</p>
           </td>
         </tr>
         <tr x-show="loans.length > 0 && filtered.length === 0">
-          <td colspan="8" class="px-6 py-12 text-center">
+          <td colspan="9" class="px-6 py-12 text-center">
             <p class="text-slate-400">Sin resultados para "<span x-text="search" class="text-slate-300"></span>"</p>
           </td>
         </tr>
       </tbody>
     </table>
-
+    </div>
     <div x-show="filtered.length > 0"
          class="px-5 py-3 border-t border-slate-700/40 bg-slate-900/20 flex items-center justify-between">
       <p class="text-xs text-slate-500">
         <span x-text="filtered.length"></span> préstamo<span x-show="filtered.length !== 1">s</span>
       </p>
       <p class="text-xs text-slate-500 font-mono">
-        Total: <span class="text-emerald-400 font-semibold"
+        Total insoluto: <span class="text-emerald-400 font-semibold"
                      x-text="'$' + formatAmount(filtered.reduce((s,l) => s + parseFloat(l.outstanding_balance), 0))"></span>
       </p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- VISTA AGRUPADA POR SOCIO (activos + liquidados, cronológico) -->
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <div x-show="viewMode === 'grouped'" class="space-y-2">
+
+    <!-- Loading -->
+    <div x-show="agrupadoLoading" class="flex items-center justify-center py-12">
+      <svg class="animate-spin w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg>
+    </div>
+
+    <template x-for="group in agrupadoFiltered" :key="group.member_id">
+      <div x-show="!agrupadoLoading" class="bg-slate-800/60 rounded-2xl border border-slate-700/50 overflow-hidden">
+
+        <!-- Socio con un solo préstamo (activo o liquidado): fila plana, sin dropdown -->
+        <template x-if="group.loans.length === 1">
+          <div class="px-5 py-4 flex items-center gap-4">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <p class="font-medium text-slate-100 truncate" x-text="group.member_name"></p>
+                <span class="text-xs text-slate-500" x-text="group.group_name"></span>
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
+                      :class="group.member_type === 'dentro' ? 'bg-blue-500/10 text-blue-400' : 'bg-purple-500/10 text-purple-400'"
+                      x-text="group.member_type === 'dentro' ? 'Interno' : 'Externo'"></span>
+                <span x-show="group.loans[0].status === 'paid'"
+                      class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-slate-700/60 text-slate-400">Liquidado</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5" x-text="group.loans[0].start_date + ' · ' + (parseFloat(group.loans[0].interest_rate)*100).toFixed(0) + '% / mes'"></p>
+            </div>
+            <div class="flex items-center gap-4 flex-shrink-0">
+              <div class="text-right hidden sm:block">
+                <p class="text-xs text-slate-500">Capital</p>
+                <span class="font-mono text-sm text-slate-300" x-text="'$' + formatAmount(group.loans[0].initial_amount)"></span>
+              </div>
+              <div class="text-right">
+                <p class="text-xs text-slate-500" x-text="group.loans[0].status === 'paid' ? 'Liquidado' : 'Saldo insoluto'"></p>
+                <span class="font-mono font-bold" :class="group.loans[0].status === 'paid' ? 'text-slate-500' : 'text-emerald-400'"
+                      x-text="'$' + formatAmount(group.loans[0].outstanding_balance)"></span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <template x-if="group.loans[0].status === 'active'">
+                  <button @click="openInterestModal(loanFromGrupo(group.loans[0]))"
+                          :class="group.loans[0].interest_paid_month ? 'bg-slate-700/60 text-slate-400' : 'bg-amber-600 text-white'"
+                          class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors">Int.</button>
+                </template>
+                <template x-if="group.loans[0].status === 'active'">
+                  <button @click="openCapitalModal(loanFromGrupo(group.loans[0]))"
+                          class="px-2.5 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold transition-colors">Cap.</button>
+                </template>
+                <button @click="openGestionar({ id: group.loans[0].loan_id })"
+                        class="px-2.5 py-1.5 bg-slate-700/80 text-slate-200 rounded-lg text-xs font-semibold transition-colors border border-slate-600/50">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Socio con 2+ préstamos: dropdown con histórico de liquidados -->
+        <template x-if="group.loans.length > 1">
+          <div>
+            <button @click="toggleMemberExpand(group.member_id)"
+                    class="w-full px-5 py-4 flex items-center gap-4 hover:bg-slate-700/20 transition-colors text-left">
+              <svg class="w-4 h-4 text-slate-500 flex-shrink-0 transition-transform duration-200"
+                   :class="expandedMembers.includes(group.member_id) ? 'rotate-90' : ''"
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+              </svg>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <p class="font-medium text-slate-100 truncate" x-text="group.member_name"></p>
+                  <span class="text-xs text-slate-500" x-text="group.group_name"></span>
+                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
+                        :class="group.member_type === 'dentro' ? 'bg-blue-500/10 text-blue-400' : 'bg-purple-500/10 text-purple-400'"
+                        x-text="group.member_type === 'dentro' ? 'Interno' : 'Externo'"></span>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  <span x-show="group.n_activos > 0" x-text="group.n_activos + ' activo' + (group.n_activos !== 1 ? 's' : '')"></span>
+                  <span x-show="group.n_activos > 0 && group.n_liquidados > 0"> · </span>
+                  <span x-show="group.n_liquidados > 0" class="text-slate-600" x-text="group.n_liquidados + ' liquidado' + (group.n_liquidados !== 1 ? 's' : '') + ' (histórico)'"></span>
+                </p>
+              </div>
+              <div class="flex items-center gap-6 flex-shrink-0">
+                <div class="text-right hidden sm:block">
+                  <p class="text-xs text-slate-500">Total prestado</p>
+                  <p class="font-mono font-semibold text-slate-300 text-sm" x-text="'$' + formatAmount(group.total_initial)"></p>
+                </div>
+                <div class="text-right">
+                  <p class="text-xs text-slate-500">Saldo insoluto</p>
+                  <p class="font-mono font-bold text-emerald-400" x-text="'$' + formatAmount(group.total_balance)"></p>
+                </div>
+                <div class="text-right hidden md:block">
+                  <p class="text-xs text-slate-500">Int / Mes</p>
+                  <p class="font-mono font-semibold text-amber-400 text-sm" x-text="'$' + formatAmount(group.total_interest_mensual)"></p>
+                </div>
+              </div>
+            </button>
+
+            <!-- Expandido: préstamos en orden cronológico (activos y liquidados) -->
+            <div x-show="expandedMembers.includes(group.member_id)" x-cloak class="border-t border-slate-700/40">
+              <template x-for="loan in group.loans" :key="loan.loan_id">
+                <div class="px-5 py-3 flex items-center gap-4 border-b border-slate-700/20 last:border-0 transition-colors"
+                     :class="loan.status === 'paid' ? 'bg-slate-900/40 opacity-70' : 'bg-slate-900/20 hover:bg-slate-700/15'">
+                  <div class="w-4"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="text-xs text-slate-400 font-mono">#<span x-text="loan.loan_id"></span></span>
+                      <span class="text-xs text-slate-500" x-text="loan.start_date"></span>
+                      <span class="text-xs px-1.5 py-0.5 rounded font-medium"
+                            :class="loan.loan_type === 'internal' ? 'bg-blue-500/10 text-blue-400' : 'bg-purple-500/10 text-purple-400'"
+                            x-text="loan.loan_type === 'internal' ? 'Int' : 'Ext'"></span>
+                      <span class="text-xs text-slate-600" x-text="(parseFloat(loan.interest_rate)*100).toFixed(0) + '%'"></span>
+                      <template x-if="loan.status === 'active'">
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium"
+                              :class="loan.interest_paid_month ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'"
+                              x-text="loan.interest_paid_month ? 'Al corriente' : 'Pendiente'"></span>
+                      </template>
+                      <template x-if="loan.status === 'paid'">
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-slate-700/60 text-slate-400">
+                          Liquidado<span x-show="loan.fecha_liquidacion" x-text="' · ' + loan.fecha_liquidacion"></span>
+                        </span>
+                      </template>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-4 flex-shrink-0">
+                    <div class="text-right hidden sm:block">
+                      <span class="font-mono text-xs text-slate-500" x-text="'$' + formatAmount(loan.initial_amount)"></span>
+                    </div>
+                    <div class="text-right">
+                      <span class="font-mono font-semibold text-sm" :class="loan.status === 'paid' ? 'text-slate-500' : 'text-emerald-400'"
+                            x-text="'$' + formatAmount(loan.outstanding_balance)"></span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                      <template x-if="loan.status === 'active'">
+                        <button @click="openInterestModal(loanFromGrupo(loan))"
+                                :class="loan.interest_paid_month ? 'bg-slate-700/60 text-slate-400' : 'bg-amber-600 text-white'"
+                                class="px-2 py-1 rounded-lg text-xs font-semibold transition-colors">Int.</button>
+                      </template>
+                      <template x-if="loan.status === 'active'">
+                        <button @click="openCapitalModal(loanFromGrupo(loan))"
+                                class="px-2 py-1 bg-emerald-600 text-white rounded-lg text-xs font-semibold transition-colors">Cap.</button>
+                      </template>
+                      <button @click="openGestionar({ id: loan.loan_id })"
+                              class="px-2 py-1 bg-slate-700/80 text-slate-200 rounded-lg text-xs font-semibold transition-colors border border-slate-600/50">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </template>
+
+    <div x-show="!agrupadoLoading && agrupadoFiltered.length === 0" class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-12 text-center">
+      <p class="text-slate-400 font-medium">No hay préstamos para mostrar</p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- ANALYTICS DE PRÉSTAMOS                                                    -->
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <div class="mt-6 grid grid-cols-1 xl:grid-cols-3 gap-4">
+    <!-- Top deudores -->
+    <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+      <h3 class="text-sm font-semibold text-slate-200 mb-1">Top Deudores</h3>
+      <p class="text-xs text-slate-500 mb-4">Por saldo insoluto total</p>
+      <div class="space-y-2 max-h-64 overflow-y-auto">
+        <template x-for="(d, idx) in topDebtors" :key="d.member_id">
+          <div class="flex items-center gap-3 px-3 py-2 rounded-xl bg-slate-900/40">
+            <span class="text-xs font-mono text-slate-600 w-4 text-right" x-text="(idx+1) + '.'"></span>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm text-slate-200 font-medium truncate" x-text="d.member_name"></p>
+              <p class="text-xs text-slate-500" x-text="d.group_name + ' · ' + d.count + ' prést.'"></p>
+            </div>
+            <span class="font-mono text-sm font-semibold text-emerald-400 flex-shrink-0"
+                  x-text="'$' + formatAmount(d.totalBalance)"></span>
+          </div>
+        </template>
+        <p x-show="topDebtors.length === 0" class="text-sm text-slate-500 text-center py-4">Sin datos</p>
+      </div>
+    </div>
+
+    <!-- Quién ha pedido más préstamos -->
+    <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+      <h3 class="text-sm font-semibold text-slate-200 mb-1">Mayor Frecuencia</h3>
+      <p class="text-xs text-slate-500 mb-4">Más préstamos solicitados</p>
+      <div class="space-y-2 max-h-64 overflow-y-auto">
+        <template x-for="(d, idx) in topFrequency" :key="d.member_id">
+          <div class="flex items-center gap-3 px-3 py-2 rounded-xl bg-slate-900/40">
+            <span class="text-xs font-mono text-slate-600 w-4 text-right" x-text="(idx+1) + '.'"></span>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm text-slate-200 font-medium truncate" x-text="d.member_name"></p>
+              <p class="text-xs text-slate-500" x-text="d.group_name"></p>
+            </div>
+            <div class="text-right flex-shrink-0">
+              <p class="font-mono text-sm font-bold text-blue-400" x-text="d.count + ' prést.'"></p>
+              <p class="font-mono text-xs text-slate-500" x-text="'$' + formatAmount(d.totalInitial) + ' total'"></p>
+            </div>
+          </div>
+        </template>
+        <p x-show="topFrequency.length === 0" class="text-sm text-slate-500 text-center py-4">Sin datos</p>
+      </div>
+    </div>
+
+    <!-- Resumen por tipo -->
+    <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+      <h3 class="text-sm font-semibold text-slate-200 mb-1">Resumen de Cartera</h3>
+      <p class="text-xs text-slate-500 mb-4">Distribución actual</p>
+      <div class="space-y-4">
+        <div class="space-y-2">
+          <div class="flex justify-between text-sm">
+            <span class="text-blue-400 flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-500"></span>Internos</span>
+            <span class="font-mono text-slate-300" x-text="loanStats.internal.count + ' · $' + formatAmount(loanStats.internal.balance)"></span>
+          </div>
+          <div class="flex justify-between text-sm">
+            <span class="text-purple-400 flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-purple-500"></span>Externos</span>
+            <span class="font-mono text-slate-300" x-text="loanStats.external.count + ' · $' + formatAmount(loanStats.external.balance)"></span>
+          </div>
+        </div>
+        <div class="h-3 bg-slate-700 rounded-full overflow-hidden flex" x-show="loanStats.total > 0">
+          <div class="h-full bg-blue-500 transition-all" :style="'width:' + loanStats.internal.pct + '%'"></div>
+          <div class="h-full bg-purple-500 transition-all" :style="'width:' + loanStats.external.pct + '%'"></div>
+        </div>
+        <div class="pt-2 border-t border-slate-700/40 space-y-1.5">
+          <div class="flex justify-between text-xs">
+            <span class="text-slate-500">Al corriente</span>
+            <span class="text-emerald-400 font-mono" x-text="loanStats.upToDate + ' préstamos'"></span>
+          </div>
+          <div class="flex justify-between text-xs">
+            <span class="text-slate-500">Pendiente de interés</span>
+            <span class="text-amber-400 font-mono" x-text="loanStats.pending + ' préstamos'"></span>
+          </div>
+          <div class="flex justify-between text-xs">
+            <span class="text-slate-500">Int. mensual total</span>
+            <span class="text-amber-400 font-mono font-semibold" x-text="'$' + formatAmount(loanStats.totalMonthlyInterest)"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- fin tab activos -->
+
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB: LIQUIDADOS                                                          -->
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <div x-show="activeTab === 'liquidados'" x-cloak>
+
+    <!-- Loading -->
+    <div x-show="liquidadosLoading" class="flex items-center justify-center py-16">
+      <div class="flex items-center gap-3 text-slate-500">
+        <svg class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg>
+        <span class="text-sm">Cargando préstamos liquidados...</span>
+      </div>
+    </div>
+
+    <!-- Tabla -->
+    <div x-show="!liquidadosLoading" class="bg-slate-800/60 rounded-2xl border border-slate-700/50 overflow-hidden">
+      <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700/60 bg-slate-900/40">
+            <th class="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest">Socio</th>
+            <th class="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden lg:table-cell">Grupo</th>
+            <th class="text-right px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest">Capital Original</th>
+            <th class="text-right px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden md:table-cell">Total Intereses</th>
+            <th class="text-right px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden md:table-cell">Total Capital</th>
+            <th class="text-center px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden sm:table-cell">Tipo</th>
+            <th class="text-center px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-widest hidden lg:table-cell">Liquidado</th>
+            <th class="px-5 py-3 w-32"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="loan in liquidados" :key="loan.id">
+            <tr class="border-b border-slate-700/30 hover:bg-slate-700/20 transition-colors">
+              <td class="px-5 py-3.5">
+                <p class="font-medium text-slate-100 leading-tight" x-text="loan.member_name"></p>
+                <p class="text-xs text-slate-500 mt-0.5" x-text="'#' + loan.id + ' · ' + (parseFloat(loan.interest_rate)*100).toFixed(0) + '% / mes'"></p>
+              </td>
+              <td class="px-5 py-3.5 hidden lg:table-cell">
+                <span class="text-xs text-slate-400" x-text="loan.group_name || ''"></span>
+              </td>
+              <td class="px-5 py-3.5 text-right">
+                <span class="font-mono font-semibold text-slate-300" x-text="'$' + formatAmount(loan.initial_amount)"></span>
+              </td>
+              <td class="px-5 py-3.5 text-right hidden md:table-cell">
+                <span class="font-mono font-semibold text-amber-400" x-text="'$' + formatAmount(loan.total_intereses_pagados)"></span>
+              </td>
+              <td class="px-5 py-3.5 text-right hidden md:table-cell">
+                <span class="font-mono text-emerald-400" x-text="'$' + formatAmount(loan.total_capital_pagado)"></span>
+              </td>
+              <td class="px-5 py-3.5 text-center hidden sm:table-cell">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium"
+                      :class="loan.loan_type === 'internal'
+                        ? 'bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20'
+                        : 'bg-purple-500/10 text-purple-400 ring-1 ring-purple-500/20'"
+                      x-text="loan.loan_type === 'internal' ? 'Interno' : 'Externo'"></span>
+              </td>
+              <td class="px-5 py-3.5 text-center hidden lg:table-cell">
+                <span class="text-xs text-slate-500 font-mono" x-text="loan.fecha_liquidacion || '—'"></span>
+              </td>
+              <td class="px-5 py-3.5 text-right">
+                <button @click="openInteresExtra(loan)"
+                        class="px-3 py-1.5 bg-amber-600/80 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold transition-colors">
+                  + Interés Extra
+                </button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="liquidados.length === 0 && !liquidadosLoading">
+            <td colspan="8" class="px-6 py-16 text-center">
+              <p class="text-slate-400 font-medium">No hay préstamos liquidados</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <div x-show="liquidados.length > 0"
+           class="px-5 py-3 border-t border-slate-700/40 bg-slate-900/20 flex items-center justify-between">
+        <p class="text-xs text-slate-500">
+          <span x-text="liquidados.length"></span> préstamo<span x-show="liquidados.length !== 1">s</span> liquidado<span x-show="liquidados.length !== 1">s</span>
+        </p>
+        <p class="text-xs text-slate-500 font-mono">
+          Total intereses cobrados:
+          <span class="text-amber-400 font-semibold"
+                x-text="'$' + formatAmount(liquidados.reduce((s,l) => s + parseFloat(l.total_intereses_pagados), 0))"></span>
+        </p>
+      </div>
+    </div>
+  </div><!-- fin tab liquidados -->
+
+  <!-- ── Interés Extra Modal ─────────────────────────────────────────────────── -->
+  <div x-show="interesExtra.open" x-cloak
+       class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+       @keydown.escape.window="interesExtra.open = false">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="interesExtra.open = false"></div>
+    <div class="relative bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl
+                shadow-2xl border-t sm:border border-slate-700/80 z-10"
+         x-transition:enter="transition ease-out duration-250"
+         x-transition:enter-start="opacity-0 translate-y-8 sm:scale-95"
+         x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+         @click.stop>
+      <div class="sm:hidden flex justify-center pt-3 pb-1">
+        <div class="w-10 h-1 rounded-full bg-slate-600"></div>
+      </div>
+      <div class="px-6 pt-3 pb-4 sm:py-5 border-b border-slate-700/60">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="flex items-center gap-2 mb-0.5">
+              <h3 class="text-base font-semibold text-slate-100">Interés Extra</h3>
+              <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20">LIQUIDADO</span>
+            </div>
+            <p class="text-sm text-slate-400" x-text="interesExtra.loan?.member_name ?? ''"></p>
+            <p class="text-xs text-slate-500 mt-0.5" x-text="'Préstamo #' + (interesExtra.loan?.id ?? '') + ' · Capital original: $' + formatAmount(interesExtra.loan?.initial_amount ?? 0)"></p>
+          </div>
+          <button @click="interesExtra.open = false" class="text-slate-500 hover:text-slate-300 p-1 rounded-lg hover:bg-slate-700 transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-2">Monto del interés extra</label>
+          <div class="relative">
+            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-mono">$</span>
+            <input type="number" x-model.number="interesExtra.monto" step="0.01" min="0.01"
+                   class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
+                          rounded-xl pl-8 pr-4 py-3.5 text-slate-100 font-mono text-xl
+                          focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all placeholder-slate-600"
+                   placeholder="0.00"/>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-2">Fecha del pago</label>
+          <input type="date" x-model="interesExtra.fechaPago"
+                 class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
+                        rounded-xl px-4 py-2.5 text-slate-100 text-sm focus:outline-none transition-all [color-scheme:dark]"/>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-2">Motivo / Razón <span class="text-red-400">*</span></label>
+          <textarea x-model="interesExtra.motivo" rows="3"
+                    placeholder="Explica por qué se cobra este interés extra (mín. 5 caracteres)..."
+                    class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70
+                           rounded-xl px-4 py-2.5 text-slate-100 text-sm focus:outline-none transition-all
+                           placeholder-slate-600 resize-none"></textarea>
+        </div>
+        <!-- Preview -->
+        <div x-show="interesExtra.monto > 0" x-transition
+             class="bg-amber-900/15 rounded-xl border border-amber-700/20 px-4 py-3">
+          <p class="text-sm text-amber-400/90">
+            Se registrará un pago de interés extra de
+            <span class="font-mono font-semibold" x-text="'$' + formatAmount(interesExtra.monto)"></span>
+            para el préstamo liquidado de <span class="font-semibold" x-text="interesExtra.loan?.member_name ?? ''"></span>.
+          </p>
+          <p class="text-xs text-amber-500/60 mt-1">Esto impactará en las ganancias acumuladas y métricas del dashboard.</p>
+        </div>
+        <div x-show="interesExtra.error" x-cloak
+             class="flex items-start gap-3 bg-red-900/20 border border-red-700/30 rounded-xl px-4 py-3">
+          <svg class="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span class="text-red-400 text-sm" x-text="interesExtra.error"></span>
+        </div>
+      </div>
+      <div class="px-6 py-4 border-t border-slate-700/60 flex gap-3">
+        <button @click="interesExtra.open = false"
+                class="flex-1 px-4 py-2.5 text-slate-300 text-sm font-medium rounded-xl bg-slate-700/50 hover:bg-slate-700 transition-colors">
+          Cancelar
+        </button>
+        <button @click="submitInteresExtra()"
+                :disabled="interesExtra.loading || interesExtra.monto <= 0 || interesExtra.motivo.length < 5"
+                class="flex-1 px-5 py-2.5 bg-amber-600 text-white rounded-xl text-sm font-semibold
+                       transition-colors shadow-lg shadow-amber-900/30
+                       disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-500 active:bg-amber-700">
+          <span x-show="!interesExtra.loading">Registrar Interés Extra</span>
+          <span x-show="interesExtra.loading" class="flex items-center justify-center gap-2">
+            <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>Procesando...
+          </span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -230,6 +997,16 @@
         </div>
       </div>
       <div class="px-6 py-5 space-y-4">
+        <div x-show="modal.mode === 'interest' && modal.loan?.interest_paid_month" x-cloak
+             class="flex items-start gap-2.5 bg-amber-900/20 border border-amber-700/30 rounded-xl px-4 py-3">
+          <svg class="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+          </svg>
+          <p class="text-xs text-amber-400/90 leading-relaxed">
+            Este préstamo ya tiene un pago de interés registrado este mes.
+            Si registras otro, quedará como posible duplicado y aparecerá en el detector de "Duplicados de Interés".
+          </p>
+        </div>
         <div class="grid grid-cols-2 gap-3">
           <div class="bg-slate-900/60 rounded-xl p-3.5 border border-slate-700/40">
             <p class="text-xs text-slate-500 mb-1.5">Saldo Insoluto</p>
@@ -392,6 +1169,7 @@
             <div class="flex items-center justify-between bg-slate-700/60 border border-slate-600/60 rounded-xl px-4 py-2.5 mb-1">
               <div>
                 <span class="text-slate-100 text-sm font-medium" x-text="newLoan.member_name"></span>
+                <span class="ml-2 text-xs text-slate-500" x-text="newLoan.group_name || ''"></span>
                 <span class="ml-2 text-xs px-1.5 py-0.5 rounded"
                       :class="newLoan.loan_type === 'internal'
                         ? 'bg-blue-500/10 text-blue-400'
@@ -424,8 +1202,15 @@
                           @click="selectMemberForLoan(m)"
                           class="w-full flex items-center justify-between px-4 py-2.5 text-sm
                                  hover:bg-slate-700/60 transition-colors text-left">
-                    <span class="text-slate-200 font-medium" x-text="m.name"></span>
-                    <span class="text-xs px-1.5 py-0.5 rounded ml-2"
+                    <div class="flex flex-col">
+                      <span class="text-slate-200 font-medium" x-text="m.name"></span>
+                      <span class="text-xs text-slate-500">
+                        <span x-text="m.group_name || 'Sin grupo'"></span>
+                        <span x-show="m.interest_rate != null" class="text-purple-400 ml-1"
+                              x-text="'· ' + (m.interest_rate * 100).toFixed(1) + '% propia'"></span>
+                      </span>
+                    </div>
+                    <span class="text-xs px-1.5 py-0.5 rounded ml-2 flex-shrink-0"
                           :class="m.member_type === 'dentro'
                             ? 'bg-blue-500/10 text-blue-400'
                             : 'bg-purple-500/10 text-purple-400'"
@@ -557,5 +1342,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/loans.js"></script>
+<script src="/static/js/loans.js?v=10"></script>
 {% endblock %}

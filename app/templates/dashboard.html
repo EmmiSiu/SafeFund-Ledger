@@ -60,7 +60,7 @@
       <p class="text-2xl font-bold text-slate-100 font-mono tracking-tight">
         ${{ "{:,.2f}".format(metrics.total_en_caja) }}
       </p>
-      <p class="text-xs text-slate-500 mt-1.5">{{ metrics.total_socios }} socio{{ 's' if metrics.total_socios != 1 }} activo{{ 's' if metrics.total_socios != 1 }}</p>
+      <p class="text-xs text-slate-500 mt-1.5">{{ metrics.total_socios }} socio{{ 's' if metrics.total_socios != 1 }} interno{{ 's' if metrics.total_socios != 1 }}</p>
     </div>
 
     <!-- Total Prestado -->
@@ -111,7 +111,111 @@
       <p class="text-2xl font-bold text-emerald-300 font-mono tracking-tight">
         ${{ "{:,.2f}".format(metrics.proyeccion_cierre) }}
       </p>
-      <p class="text-xs text-emerald-600 mt-1.5">Ahorros + intereses estimados Nov 2026</p>
+      <p class="text-xs text-emerald-600 mt-1.5">Rendimiento proy. {{ "{:.2f}".format(metrics.rendimiento_proy_pct) }}% al cierre</p>
+    </div>
+
+  </div>
+
+  <!-- ── Rendimiento de la Caja ──────────────────────────────────────────────── -->
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
+
+    <!-- Rendimiento actual -->
+    <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <h3 class="text-sm font-semibold text-slate-200">Rendimiento Actual</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Intereses generados vs capital ahorrado (socios internos)</p>
+        </div>
+        <span class="text-2xl font-bold font-mono text-emerald-400">{{ "{:.2f}".format(metrics.rendimiento_pct) }}%</span>
+      </div>
+
+      <!-- Barra visual -->
+      <div class="mb-4">
+        <div class="flex justify-between text-xs text-slate-500 mb-1.5">
+          <span>0%</span>
+          <span class="text-emerald-400 font-medium">{{ "{:.2f}".format(metrics.rendimiento_pct) }}% generado</span>
+          <span>{{ "{:.2f}".format(metrics.rendimiento_proy_pct) }}% proy.</span>
+        </div>
+        <div class="h-4 bg-slate-700 rounded-full overflow-hidden relative">
+          <!-- Barra de proyección (fondo) -->
+          <div class="absolute inset-y-0 left-0 bg-emerald-900/50 rounded-full transition-all duration-700"
+               style="width: {{ "{:.1f}".format([metrics.rendimiento_proy_pct, 100]|min) }}%"></div>
+          <!-- Barra actual (frente) -->
+          <div class="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-700"
+               style="width: {{ "{:.1f}".format([metrics.rendimiento_pct, 100]|min) }}%"></div>
+        </div>
+      </div>
+
+      <!-- Desglose -->
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700/40">
+          <p class="text-xs text-slate-500 mb-1">Total Ahorrado</p>
+          <p class="font-mono font-bold text-slate-100">${{ "{:,.2f}".format(metrics.total_en_caja) }}</p>
+        </div>
+        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700/40">
+          <p class="text-xs text-slate-500 mb-1">Intereses Cobrados</p>
+          <p class="font-mono font-bold text-emerald-400">${{ "{:,.2f}".format(metrics.intereses_totales) }}</p>
+        </div>
+      </div>
+
+      <p class="text-xs text-slate-600 mt-3">
+        Fórmula: Rendimiento = Intereses Cobrados / Total Ahorrado Internos &times; 100
+      </p>
+    </div>
+
+    <!-- Proyección al cierre -->
+    <div class="bg-gradient-to-br from-emerald-900/20 to-slate-800/60 rounded-2xl border border-emerald-700/20 p-5">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <h3 class="text-sm font-semibold text-emerald-300">Proyección al Cierre</h3>
+          <p class="text-xs text-emerald-600 mt-0.5">Estimado a {{ metrics.cycle_end }} basado en comportamiento observado</p>
+        </div>
+        <span class="text-2xl font-bold font-mono text-emerald-300">{{ "{:.2f}".format(metrics.rendimiento_proy_pct) }}%</span>
+      </div>
+
+      <!-- Métricas de la proyección -->
+      <div class="space-y-3 mb-4">
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-slate-400">Tasa mensual observada</span>
+          <span class="font-mono font-semibold text-slate-200">{{ "{:.4f}".format(metrics.tasa_mensual_obs) }}%</span>
+        </div>
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-slate-400">Meses transcurridos</span>
+          <span class="font-mono font-semibold text-slate-200">{{ metrics.meses_transcurridos }} de {{ metrics.meses_transcurridos + metrics.meses_restantes }}</span>
+        </div>
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-slate-400">Meses restantes</span>
+          <span class="font-mono font-semibold text-slate-200">{{ metrics.meses_restantes }}</span>
+        </div>
+        <div class="pt-2 border-t border-emerald-700/20">
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-slate-400">Intereses proyectados al cierre</span>
+            <span class="font-mono font-bold text-emerald-400">${{ "{:,.2f}".format(metrics.intereses_cierre) }}</span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-emerald-400 font-medium">Total proyectado en caja</span>
+          <span class="font-mono font-bold text-emerald-300 text-lg">${{ "{:,.2f}".format(metrics.proyeccion_cierre) }}</span>
+        </div>
+      </div>
+
+      <!-- Barra de progreso del ciclo -->
+      {% set cycle_pct = (metrics.meses_transcurridos / (metrics.meses_transcurridos + metrics.meses_restantes) * 100) if (metrics.meses_transcurridos + metrics.meses_restantes) > 0 else 0 %}
+      <div>
+        <div class="flex justify-between text-xs text-emerald-600 mb-1">
+          <span>Inicio ciclo</span>
+          <span>{{ "{:.0f}".format(cycle_pct) }}% del ciclo</span>
+          <span>Cierre</span>
+        </div>
+        <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+          <div class="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all"
+               style="width: {{ "{:.1f}".format(cycle_pct) }}%"></div>
+        </div>
+      </div>
+
+      <p class="text-xs text-emerald-700 mt-3">
+        Fórmula: Tasa mensual = Intereses / (Ahorro &times; Meses transcurridos). Proyección = Tasa &times; Ahorro &times; Meses restantes + Intereses actuales.
+      </p>
     </div>
 
   </div>
@@ -148,8 +252,8 @@
           <p class="text-xs text-slate-500">Cargando datos…</p>
         </div>
       </div>
-      <div x-show="!chartLoading" x-cloak>
-        <canvas id="growthChart" class="h-56" style="max-height:224px"></canvas>
+      <div :class="chartLoading ? 'invisible h-0 overflow-hidden' : 'h-56'">
+        <canvas id="growthChart" style="max-height:224px"></canvas>
       </div>
     </div>
 
