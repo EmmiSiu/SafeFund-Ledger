@@ -24,7 +24,7 @@
   .meta-block strong { color: #0f172a; font-size: 10pt; }
 
   /* KPI Cards */
-  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 16px; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 16px; }
   .kpi-card { border-radius: 6px; padding: 10px 12px; }
   .kpi-card .label { font-size: 7.5pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
   .kpi-card .value { font-size: 13pt; font-weight: bold; font-family: monospace; }
@@ -38,6 +38,8 @@
   .kpi-amber .value { color: #92400e; }
   .kpi-blue   { background: #eff6ff; border: 1px solid #bfdbfe; }
   .kpi-blue .value  { color: #1e40af; }
+  .kpi-purple { background: #f5f3ff; border: 1px solid #ddd6fe; }
+  .kpi-purple .value { color: #5b21b6; }
 
   /* Section title */
   .section-title {
@@ -116,7 +118,12 @@
   <div class="kpi-card kpi-amber">
     <div class="label">Total Prestado</div>
     <div class="value">{{ total_prestado | mxn }}</div>
-    <div class="sub" style="color:#92400e">Cartera vigente</div>
+    <div class="sub" style="color:#92400e">Capital desembolsado activo</div>
+  </div>
+  <div class="kpi-card kpi-purple">
+    <div class="label">Saldo Insoluto</div>
+    <div class="value">{{ saldo_insoluto | mxn }}</div>
+    <div class="sub" style="color:#5b21b6">Cartera pendiente de cobro</div>
   </div>
   <div class="kpi-card kpi-blue">
     <div class="label">Rendimientos</div>
@@ -132,7 +139,7 @@
 
 <!-- Utilization bar -->
 {% if total_ahorros > 0 %}
-{% set util_pct = ((total_prestado / total_ahorros) * 100) | round(1) %}
+{% set util_pct = ((saldo_insoluto / total_ahorros) * 100) | round(1) %}
 <div class="utilization-wrap" style="margin-bottom: 16px;">
   <div style="display:flex; justify-content:space-between; font-size:7.5pt; color:#64748b; margin-bottom:3px;">
     <span>Utilización del fondo</span>
@@ -215,8 +222,8 @@
   <tfoot>
     <tr>
       <td colspan="4">TOTAL</td>
-      <td></td>
       <td class="right">{{ total_prestado | mxn }}</td>
+      <td class="right">{{ saldo_insoluto | mxn }}</td>
       <td class="right">{{ total_interest_due_month | mxn }}</td>
       <td></td>
       <td></td>

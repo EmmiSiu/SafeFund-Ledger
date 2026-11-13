@@ -135,9 +135,20 @@ def generate_reporte_caja(caja_id: int, db: Session) -> bytes:
             or 0
         )
     )
-    total_prestado = Decimal(
+    # Saldo insoluto: lo que falta por cobrar de los préstamos activos.
+    saldo_insoluto = Decimal(
         str(
             db.query(func.sum(Loan.outstanding_balance))
+            .filter(Loan.caja_id == caja_id, Loan.status == "active")
+            .scalar()
+            or 0
+        )
+    )
+    # Total prestado: capital originalmente desembolsado en préstamos que
+    # siguen activos (interno + externo). No baja con los abonos a capital.
+    total_prestado = Decimal(
+        str(
+            db.query(func.sum(Loan.initial_amount))
             .filter(Loan.caja_id == caja_id, Loan.status == "active")
             .scalar()
             or 0
@@ -207,8 +218,9 @@ def generate_reporte_caja(caja_id: int, db: Session) -> bytes:
             "caja": caja,
             "total_ahorros": total_ahorros,
             "total_prestado": total_prestado,
+            "saldo_insoluto": saldo_insoluto,
             "total_rendimientos": total_rendimientos,
-            "capital_disponible": total_ahorros - total_prestado,
+            "capital_disponible": total_ahorros - saldo_insoluto,
             "loan_rows": loan_rows,
             "n_current": n_current,
             "n_overdue": n_overdue,

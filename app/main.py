@@ -125,6 +125,15 @@ def dashboard_view(request: Request, caja_id: int = 1, db: Session = Depends(get
             ).scalar() or 0
         ))
 
+        # Capital realmente desembolsado y aún activo (interno + externo).
+        # Distinto de "capital" (saldo insoluto): este no baja con los abonos
+        # a capital, es el histórico de lo prestado que sigue vigente.
+        total_prestado = Decimal(str(
+            db.query(func.sum(Loan.initial_amount)).filter(
+                Loan.caja_id == caja_id, Loan.status == "active"
+            ).scalar() or 0
+        ))
+
         # Solo socios internos ("dentro") cuentan para el ahorro de la caja
         ahorros = Decimal(str(
             db.query(func.sum(Member.savings_balance)).filter(
@@ -187,6 +196,7 @@ def dashboard_view(request: Request, caja_id: int = 1, db: Session = Depends(get
             "caja_id":              caja_id,
             "caja_name":            caja.name,
             "total_en_caja":        ahorros,
+            "total_prestado":       total_prestado,
             "capital_en_prestamos": capital,
             "intereses_totales":    intereses_totales,
             "proyeccion_cierre":    proyeccion,
