@@ -17,6 +17,7 @@ from app.schemas.transactions import (
     TransactionRead,
 )
 from app.services.finance_engine import apply_payment
+from app.services.savings import sync_member_savings
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
@@ -235,7 +236,7 @@ def register_savings(payload: SavingsRequest, db: Session = Depends(get_db)):
         notes=payload.notes,
     )
     db.add(t)
-    member.savings_balance += payload.amount
+    sync_member_savings(db, member)
     db.commit()
     db.refresh(t)
     return t

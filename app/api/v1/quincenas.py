@@ -16,15 +16,12 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.base import Aportacion, CajaConfig, Member, QuincenaPendiente
+from app.services.savings import sync_member_savings
 
 
 def _recalc_savings(member: Member, caja_id: int, db: Session) -> None:
-    """Recalcula savings_balance desde la suma real de Aportaciones en BD."""
-    apo_total = db.query(func.coalesce(func.sum(Aportacion.monto), 0)).filter(
-        Aportacion.member_id == member.id,
-        Aportacion.caja_id == caja_id,
-    ).scalar() or Decimal("0")
-    member.savings_balance = Decimal(str(apo_total))
+    """Recalcula savings_balance desde la fuente única (aportaciones + saldos importados)."""
+    sync_member_savings(db, member)
 
 
 def _sync_aportaciones(member_id: int, caja_id: int, cuota: Decimal,
@@ -300,9 +297,9 @@ def toggle_quincena(payload: ToggleRequest, db: Session = Depends(get_db)):
                 Aportacion.notas == "_cuota_",
             ).first()
             if apo:
-                member.savings_balance -= apo.monto
                 db.delete(apo)
-        
+            sync_member_savings(db, member)
+
         db.commit()
         return {"estado": "pendiente", "member_id": payload.member_id, "quincena_num": payload.quincena_num}
     else:
@@ -325,8 +322,8 @@ def toggle_quincena(payload: ToggleRequest, db: Session = Depends(get_db)):
                 notas="_cuota_",
                 fecha_aportacion=date.today(),
             ))
-            member.savings_balance += cuota
-            
+            sync_member_savings(db, member)
+
         db.commit()
         return {"estado": "pagado", "member_id": payload.member_id, "quincena_num": payload.quincena_num}
 

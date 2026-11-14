@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session, joinedload
 from app.api.v1.aportaciones import router as aportaciones_router
 from app.api.v1.quincenas import router as quincenas_router
 from app.api.v1.cajas import router as cajas_router
+from app.api.v1.cierre import router as cierre_router
+from app.api.v1.cierre import router as cierre_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.groups import router as groups_router
 from app.api.v1.loans import router as loans_router
@@ -32,7 +34,8 @@ from app.models.base import (
     QuincenaPendiente,
     Transaction,
 )
-from app.api.v1.quincenas import _get_current_quincena
+from app.api.v1.quincenas import _get_current_quincena, _quincena_end
+from app.services.savings import savings_by_member
 
 
 @asynccontextmanager
@@ -81,6 +84,8 @@ app.include_router(transactions_router,  prefix=PREFIX)
 app.include_router(reports_router,       prefix=PREFIX)
 app.include_router(aportaciones_router,  prefix=PREFIX)
 app.include_router(quincenas_router,     prefix=PREFIX)
+app.include_router(cierre_router,        prefix=PREFIX)
+app.include_router(cierre_router,        prefix=PREFIX)
 
 
 # ── Health ─────────────────────────────────────────────────────────────────────
@@ -121,6 +126,15 @@ def dashboard_view(request: Request, caja_id: int = 1, db: Session = Depends(get
 
         capital = Decimal(str(
             db.query(func.sum(Loan.outstanding_balance)).filter(
+                Loan.caja_id == caja_id, Loan.status == "active"
+            ).scalar() or 0
+        ))
+
+        # Capital realmente desembolsado y aún activo (interno + externo).
+        # Distinto de "capital" (saldo insoluto): este no baja con los abonos
+        # a capital, es el histórico de lo prestado que sigue vigente.
+        total_prestado = Decimal(str(
+            db.query(func.sum(Loan.initial_amount)).filter(
                 Loan.caja_id == caja_id, Loan.status == "active"
             ).scalar() or 0
         ))
@@ -166,8 +180,8 @@ def dashboard_view(request: Request, caja_id: int = 1, db: Session = Depends(get
         # ── Proyección de rendimiento al cierre ──
         # Fórmula: tasa_mensual_observada = intereses_cobrados / (ahorros × meses_transcurridos)
         # Proyección = tasa_mensual_obs × ahorros × meses_restantes + intereses_cobrados
-        CYCLE_END = _date(2026, 11, 30)
-        cycle_start = caja.start_date or _date(2025, 12, 15)
+        cycle_start = caja.start_date or today
+        CYCLE_END = _quincena_end(cycle_start, caja.total_quincenas)
         meses_transcurridos = max(1, round((today - cycle_start).days / 30))
         meses_restantes = max(0, round((CYCLE_END - today).days / 30))
 
@@ -187,6 +201,7 @@ def dashboard_view(request: Request, caja_id: int = 1, db: Session = Depends(get
             "caja_id":              caja_id,
             "caja_name":            caja.name,
             "total_en_caja":        ahorros,
+            "total_prestado":       total_prestado,
             "capital_en_prestamos": capital,
             "intereses_totales":    intereses_totales,
             "proyeccion_cierre":    proyeccion,
@@ -230,19 +245,18 @@ def loans_view(request: Request, caja_id: int = 1, db: Session = Depends(get_db)
             .order_by(Loan.id)
             .all()
         )
+        last_interest_map = dict(
+            db.query(Transaction.loan_id, func.max(Transaction.transaction_date))
+            .join(Loan, Transaction.loan_id == Loan.id)
+            .filter(Loan.caja_id == caja_id, Transaction.transaction_type == "interest_payment")
+            .group_by(Transaction.loan_id)
+            .all()
+        )
         for l, member_name, member_type, group_name in loan_rows:
-            last_interest = (
-                db.query(Transaction)
-                .filter(
-                    Transaction.loan_id == l.id,
-                    Transaction.transaction_type == "interest_payment",
-                )
-                .order_by(Transaction.transaction_date.desc())
-                .first()
-            )
+            last_interest_date = last_interest_map.get(l.id)
             interest_paid_this_month = (
-                last_interest is not None
-                and last_interest.transaction_date >= start_of_month
+                last_interest_date is not None
+                and last_interest_date >= start_of_month
             )
             loans_data.append({
                 "id":                     l.id,
@@ -256,7 +270,7 @@ def loans_view(request: Request, caja_id: int = 1, db: Session = Depends(get_db)
                 "loan_type":              l.loan_type,
                 "start_date":             str(l.start_date),
                 "interest_paid_month":    interest_paid_this_month,
-                "last_interest_date":     str(last_interest.transaction_date) if last_interest else None,
+                "last_interest_date":     str(last_interest_date) if last_interest_date else None,
                 "_saving":                False,
             })
 
@@ -311,39 +325,32 @@ def members_view(request: Request, caja_id: int = 1, db: Session = Depends(get_d
             .all()
         )
         current_q = _get_current_quincena(caja.start_date, caja.total_quincenas) if caja.start_date else 0
-        needs_commit = False
+
+        # Agregaciones agrupadas por socio (una consulta cada una, no una por socio).
+        quincenas_map = {
+            mid: (n, hasta)
+            for mid, n, hasta in db.query(
+                QuincenaPendiente.member_id,
+                func.count(QuincenaPendiente.id),
+                func.max(QuincenaPendiente.quincena_num),
+            )
+            .filter(
+                QuincenaPendiente.caja_id == caja.id,
+                QuincenaPendiente.quincena_num <= current_q,
+            )
+            .group_by(QuincenaPendiente.member_id)
+        }
+        # Vista de solo lectura: el saldo se calcula desde los movimientos pero no
+        # se escribe aquí; se actualiza al registrar/corregir cada movimiento.
+        savings_map = savings_by_member(db, caja.id)
+
         for m in rows:
             active = [l for l in m.loans if l.status == "active"]
-
-            # Quincenas pagadas
-            pagadas_count = db.query(func.count(QuincenaPendiente.id)).filter(
-                QuincenaPendiente.member_id == m.id,
-                QuincenaPendiente.quincena_num <= current_q
-            ).scalar() or 0
-
-            quincena_hasta_m = db.query(func.max(QuincenaPendiente.quincena_num)).filter(
-                QuincenaPendiente.member_id == m.id,
-                QuincenaPendiente.quincena_num <= current_q
-            ).scalar() or 0
+            pagadas_count, quincena_hasta_m = quincenas_map.get(m.id, (0, 0))
 
             is_interno = m.member_type == "dentro"
             p_count = max(0, current_q - pagadas_count) if is_interno else 0
-
-            # Recalcular savings_balance desde registros reales para corregir datos obsoletos:
-            # sum(Aportaciones del miembro en esta caja) + sum(Transacciones de ahorro)
-            apo_sum = db.query(func.coalesce(func.sum(Aportacion.monto), 0)).filter(
-                Aportacion.member_id == m.id,
-                Aportacion.caja_id == caja.id,
-            ).scalar() or Decimal("0")
-            txn_sum = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
-                Transaction.member_id == m.id,
-                Transaction.transaction_type == "savings",
-            ).scalar() or Decimal("0")
-            correct_balance = apo_sum + txn_sum
-
-            if m.savings_balance != correct_balance:
-                m.savings_balance = correct_balance
-                needs_commit = True
+            correct_balance = savings_map.get(m.id, Decimal("0"))
 
             members_data.append({
                 "id":               m.id,
@@ -360,9 +367,6 @@ def members_view(request: Request, caja_id: int = 1, db: Session = Depends(get_d
                 "pendientes_count": p_count,
             })
 
-        if needs_commit:
-            db.commit()
-            
         group_rows = db.query(MemberGroup).filter(MemberGroup.caja_id == caja.id).order_by(MemberGroup.id).all()
         for g in group_rows:
             groups_data.append({"id": g.id, "name": g.name})
@@ -443,6 +447,20 @@ def quincenas_view(request: Request, caja_id: int = 1, db: Session = Depends(get
         "active_page":     "quincenas",
         "caja_name":       caja.name if caja else "",
         "caja_json":       json.dumps(caja_info),
+    })
+
+
+@app.get("/analisis")
+def analisis_view(request: Request, caja_id: int = 1, db: Session = Depends(get_db)):
+    """Análisis de caja, simulador de préstamo y cierre. Los datos se cargan vía API."""
+    cajas = _get_cajas(db)
+    caja  = _resolve_caja(caja_id, cajas)
+    return templates.TemplateResponse(request, "analisis.html", {
+        "cajas":           cajas,
+        "current_caja_id": caja.id if caja else None,
+        "active_page":     "analisis",
+        "caja_name":       caja.name if caja else "",
+        "today":           date.today().isoformat(),
     })
 
 
@@ -528,13 +546,15 @@ def bi_dashboard_view(request: Request, caja_id: int = 1, db: Session = Depends(
         group_map = {g.id: g.name for g in group_rows}
 
         all_members = db.query(Member).filter(Member.caja_id == cid, Member.is_active == True).all()
+        aportado_map = dict(
+            db.query(Aportacion.member_id, func.sum(Aportacion.monto))
+            .filter(Aportacion.caja_id == cid)
+            .group_by(Aportacion.member_id)
+            .all()
+        )
         member_rankings = []
         for m in all_members:
-            m_aport = float(
-                db.query(func.sum(Aportacion.monto))
-                .filter(Aportacion.member_id == m.id, Aportacion.caja_id == cid)
-                .scalar() or Decimal("0")
-            )
+            m_aport = float(aportado_map.get(m.id) or 0)
             member_rankings.append({
                 "id":              m.id,
                 "name":            m.name,
@@ -757,8 +777,9 @@ def loan_gestionar_partial(request: Request, loan_id: int, db: Session = Depends
 
 
 @app.get("/settings")
-def settings_view(request: Request, db: Session = Depends(get_db)):
+def settings_view(request: Request, caja_id: int = 1, db: Session = Depends(get_db)):
     cajas = _get_cajas(db)
+    current = _resolve_caja(caja_id, cajas)
     cajas_data = []
     for c in cajas:
         n_members = db.query(func.count(Member.id)).filter(
@@ -784,7 +805,7 @@ def settings_view(request: Request, db: Session = Depends(get_db)):
         })
     return templates.TemplateResponse(request, "settings.html", {
         "cajas":           cajas,
-        "current_caja_id": cajas[0].id if cajas else None,
+        "current_caja_id": current.id if current else None,
         "active_page":     "settings",
         "cajas_json":      json.dumps(cajas_data),
     })

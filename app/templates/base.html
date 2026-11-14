@@ -19,6 +19,12 @@
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <style>
     [x-cloak] { display: none !important; }
+    :where(a, button, select, input, textarea, [tabindex]):focus-visible {
+      outline: 2px solid rgb(52 211 153 / 0.7); outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
@@ -39,9 +45,8 @@
 
 <!-- ── Toast system ─────────────────────────────────────────────────────────── -->
 <div x-data="toastSystem()"
-     x-init="window.__toast = (msg, type) => show(msg, type)"
-     class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none"
-     aria-live="polite">
+     class="fixed bottom-5 right-5 left-5 sm:left-auto z-[100] flex flex-col items-end gap-2 pointer-events-none"
+     role="status" aria-live="polite">
   <template x-for="t in toasts" :key="t.id">
     <div x-show="t.visible"
          x-transition:enter="transition ease-out duration-300"
@@ -51,8 +56,8 @@
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
          :class="t.type === 'error' ? 'bg-red-900/90 border-red-700' : 'bg-slate-800/95 border-slate-600'"
-         class="pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl backdrop-blur-sm min-w-[280px]">
-      <span :class="t.type === 'error' ? 'text-red-400' : 'text-emerald-400'" class="text-lg">
+         class="pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl border shadow-xl backdrop-blur-sm w-full sm:w-auto sm:min-w-[280px] sm:max-w-md">
+      <span :class="t.type === 'error' ? 'text-red-400' : 'text-emerald-400'" class="text-lg leading-5" aria-hidden="true">
         <span x-show="t.type !== 'error'">✓</span>
         <span x-show="t.type === 'error'">✕</span>
       </span>
@@ -75,9 +80,9 @@
                 transition-all duration-300 ease-in-out">
 
     <!-- Brand -->
-    <div class="px-5 py-5 border-b border-slate-800/60">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2.5">
+    <div class="py-5 border-b border-slate-800/60" :class="sidebarCollapsed ? 'px-5 lg:px-3' : 'px-5'">
+      <div class="flex items-center" :class="sidebarCollapsed ? 'justify-between lg:justify-center' : 'justify-between'">
+        <div class="flex items-center gap-2.5" :class="sidebarCollapsed ? 'lg:hidden' : ''">
           <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600
                       flex items-center justify-center shadow-lg shadow-emerald-900/40">
             <span class="text-slate-900 font-bold text-sm">SF</span>
@@ -89,12 +94,13 @@
         </div>
         <div class="flex items-center gap-1">
           <!-- Collapse toggle (desktop only) -->
-          <button @click="toggleCollapse()" class="hidden lg:flex p-1.5 text-slate-500 hover:text-slate-300 rounded-lg hover:bg-slate-800 transition-colors" :title="sidebarCollapsed ? 'Expandir sidebar' : 'Colapsar sidebar'">
+          <button @click="toggleCollapse()" class="hidden lg:flex p-1.5 text-slate-500 hover:text-slate-300 rounded-lg hover:bg-slate-800 transition-colors"
+                  :title="sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'" :aria-label="sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'" :aria-expanded="!sidebarCollapsed">
             <svg class="w-4 h-4 transition-transform duration-300" :class="sidebarCollapsed ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
             </svg>
           </button>
-          <button @click="sidebarOpen = false" class="lg:hidden text-slate-500 hover:text-slate-300">
+          <button @click="sidebarOpen = false" class="lg:hidden p-1.5 text-slate-500 hover:text-slate-300 rounded-lg hover:bg-slate-800" aria-label="Cerrar menú">
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
             </svg>
@@ -126,18 +132,21 @@
 
     <!-- Nav links -->
     <nav class="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-      <p class="px-3 mb-2 text-xs font-medium text-slate-600 uppercase tracking-widest">Navegación</p>
+      <p x-show="!sidebarCollapsed" x-cloak class="px-3 mb-2 text-xs font-medium text-slate-600 uppercase tracking-widest">Navegación</p>
       {% set nav = [
         ('dashboard', '/dashboard', 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6', 'Dashboard'),
         ('loans',    '/loans',    'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z', 'Préstamos'),
-        ('members',  '/members',  'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z', 'Socios'),
-        ('groups',   '/groups',   'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z', 'Grupos'),
+        ('members',  '/members',  'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z', 'Socios'),
+        ('groups',   '/groups',   'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10', 'Grupos'),
         ('quincenas','/quincenas', 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', 'Quincenas'),
+        ('analisis', '/analisis', 'M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z', 'Análisis de caja'),
         ('bi',       '/bi-dashboard', 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z', 'BI & Análisis'),
         ('settings', '/settings', 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z', 'Configuración'),
       ] %}
       {% for page, href, icon_path, label in nav %}
-      <a href="{{ href }}{% if page != 'settings' %}?caja_id={{ current_caja_id or 1 }}{% endif %}"
+      <a href="{{ href }}?caja_id={{ current_caja_id or 1 }}"
+         {% if active_page == page %}aria-current="page"{% endif %}
+         :title="sidebarCollapsed ? '{{ label }}' : null"
          class="group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150
                 {% if active_page == page %}
                   bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20
@@ -156,22 +165,24 @@
       {% endfor %}
 
       <div class="pt-4 mt-4 border-t border-slate-800/60">
-        <p class="px-3 mb-2 text-xs font-medium text-slate-600 uppercase tracking-widest">Sistema</p>
+        <p x-show="!sidebarCollapsed" x-cloak class="px-3 mb-2 text-xs font-medium text-slate-600 uppercase tracking-widest">Sistema</p>
         {% if current_caja_id %}
-        <a href="/api/v1/reports/caja/{{ current_caja_id }}" target="_blank"
+        <a href="/api/v1/reports/caja/{{ current_caja_id }}" target="_blank" rel="noopener"
+           :title="sidebarCollapsed ? 'Reporte de Caja PDF' : null"
            class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-500 hover:bg-slate-800/70 hover:text-slate-300 transition-all">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
           </svg>
-          Reporte de Caja PDF
+          <span x-show="!sidebarCollapsed" x-cloak class="truncate">Reporte de Caja PDF</span>
         </a>
         {% endif %}
-        <a href="/docs" target="_blank"
+        <a href="/docs" target="_blank" rel="noopener"
+           :title="sidebarCollapsed ? 'API Docs' : null"
            class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-500 hover:bg-slate-800/70 hover:text-slate-300 transition-all">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
           </svg>
-          API Docs
+          <span x-show="!sidebarCollapsed" x-cloak class="truncate">API Docs</span>
         </a>
       </div>
     </nav>
@@ -190,7 +201,7 @@
 
     <!-- Mobile topbar -->
     <header class="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-950 border-b border-slate-800/60 flex-shrink-0">
-      <button @click="sidebarOpen = true" class="p-1.5 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-slate-800">
+      <button @click="sidebarOpen = true" class="p-1.5 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-slate-800" aria-label="Abrir menú">
         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
         </svg>
@@ -215,14 +226,22 @@
 function toastSystem() {
   return {
     toasts: [],
+    _seq: 0,
+    init() {
+      // Se registra aquí y no en x-init: Alpine ejecuta la función que devuelve
+      // x-init, lo que mostraba un aviso vacío en cada carga de página.
+      window.__toast = (msg, type) => this.show(msg, type);
+    },
     show(message, type = 'success') {
-      const id = Date.now();
-      this.toasts.push({ id, message, type, visible: true });
+      if (!message) return;
+      const id = ++this._seq;
+      this.toasts.push({ id, message: String(message), type, visible: true });
+      // Los errores se quedan más tiempo: hay que alcanzar a leerlos.
       setTimeout(() => {
         const t = this.toasts.find(t => t.id === id);
         if (t) t.visible = false;
         setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, 300);
-      }, 3500);
+      }, type === 'error' ? 7000 : 3500);
     },
   };
 }

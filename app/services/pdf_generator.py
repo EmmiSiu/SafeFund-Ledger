@@ -4,17 +4,21 @@ pdf_generator.py — Genera PDFs con WeasyPrint para SafeFund Ledger.
 Reportes disponibles:
   - Estado de Cuenta por socio (ahorros + historial de préstamos)
   - Reporte de Caja (capital, prestado, rendimientos, estatus de intereses)
+  - Cierre de Caja (reparto de rendimientos, preliminar o definitivo)
+
+Cada reporte se arma como HTML (`render_*`) y se convierte con `html_to_pdf`.
 """
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.money import CENT
-from app.models.base import CajaConfig, Loan, Member, Transaction
+from app.models.base import Aportacion, CajaConfig, Loan, Member, Transaction
 
 REPORTS_DIR = Path(__file__).parent.parent / "templates" / "reports"
 
@@ -38,29 +42,50 @@ def _render(template_name: str, ctx: dict) -> str:
     return _jinja_env().get_template(template_name).render(**ctx)
 
 
-def _to_pdf(html: str) -> bytes:
+def html_to_pdf(html: str) -> bytes:
+    """Convierte HTML a PDF. Lanza OSError si faltan las librerías nativas de WeasyPrint."""
     from weasyprint import HTML
     return HTML(string=html).write_pdf()
 
 
 # ── Estado de Cuenta ──────────────────────────────────────────────────────────
 
-def generate_estado_cuenta(member_id: int, db: Session) -> bytes:
+def render_estado_cuenta(member_id: int, db: Session) -> str:
     member = db.get(Member, member_id)
     if not member:
         raise ValueError(f"Socio {member_id} no encontrado.")
 
     caja = db.get(CajaConfig, member.caja_id)
 
-    savings = (
-        db.query(Transaction)
-        .filter(
+    # Movimientos de ahorro = aportaciones (cuotas, retiros, compensaciones) +
+    # saldos iniciales importados. Antes solo se listaban los importados, así que
+    # el estado de cuenta salía sin ahorros aunque el socio tuviera cuotas pagadas.
+    savings = [
+        SimpleNamespace(
+            transaction_date=a.fecha_aportacion,
+            amount=Decimal(str(a.monto)),
+            notes=(
+                f"Cuota quincenal {a.quincena or ''}".strip()
+                if a.notas == "_cuota_" else (a.notas or "Aportación")
+            ),
+            orden=(a.fecha_aportacion, 1, a.id),
+        )
+        for a in db.query(Aportacion).filter(
+            Aportacion.member_id == member_id, Aportacion.caja_id == member.caja_id
+        )
+    ] + [
+        SimpleNamespace(
+            transaction_date=t.transaction_date,
+            amount=Decimal(str(t.amount)),
+            notes=t.notes or "Saldo inicial / ahorro",
+            orden=(t.transaction_date, 0, t.id),
+        )
+        for t in db.query(Transaction).filter(
             Transaction.member_id == member_id,
             Transaction.transaction_type == "savings",
         )
-        .order_by(Transaction.transaction_date)
-        .all()
-    )
+    ]
+    savings.sort(key=lambda s: s.orden)
 
     loans = (
         db.query(Loan)
@@ -94,7 +119,7 @@ def generate_estado_cuenta(member_id: int, db: Session) -> bytes:
             }
         )
 
-    total_savings = sum(Decimal(str(t.amount)) for t in savings)
+    total_savings = sum((s.amount for s in savings), Decimal("0"))
     total_interest_all = sum(d["total_interest_paid"] for d in loan_details)
     total_capital_all = sum(d["total_capital_paid"] for d in loan_details)
     outstanding_total = sum(
@@ -117,12 +142,12 @@ def generate_estado_cuenta(member_id: int, db: Session) -> bytes:
             "generated_at": date.today(),
         },
     )
-    return _to_pdf(html)
+    return html
 
 
 # ── Reporte de Caja ───────────────────────────────────────────────────────────
 
-def generate_reporte_caja(caja_id: int, db: Session) -> bytes:
+def render_reporte_caja(caja_id: int, db: Session) -> str:
     caja = db.get(CajaConfig, caja_id)
     if not caja:
         raise ValueError(f"Caja {caja_id} no encontrada.")
@@ -135,9 +160,20 @@ def generate_reporte_caja(caja_id: int, db: Session) -> bytes:
             or 0
         )
     )
-    total_prestado = Decimal(
+    # Saldo insoluto: lo que falta por cobrar de los préstamos activos.
+    saldo_insoluto = Decimal(
         str(
             db.query(func.sum(Loan.outstanding_balance))
+            .filter(Loan.caja_id == caja_id, Loan.status == "active")
+            .scalar()
+            or 0
+        )
+    )
+    # Total prestado: capital originalmente desembolsado en préstamos que
+    # siguen activos (interno + externo). No baja con los abonos a capital.
+    total_prestado = Decimal(
+        str(
+            db.query(func.sum(Loan.initial_amount))
             .filter(Loan.caja_id == caja_id, Loan.status == "active")
             .scalar()
             or 0
@@ -158,6 +194,7 @@ def generate_reporte_caja(caja_id: int, db: Session) -> bytes:
 
     active_loans = (
         db.query(Loan)
+        .options(joinedload(Loan.member).joinedload(Member.member_group))
         .filter(Loan.caja_id == caja_id, Loan.status == "active")
         .order_by(Loan.member_id)
         .all()
@@ -166,25 +203,25 @@ def generate_reporte_caja(caja_id: int, db: Session) -> bytes:
     today = date.today()
     start_of_month = today.replace(day=1)
 
+    last_interest_map = dict(
+        db.query(Transaction.loan_id, func.max(Transaction.transaction_date))
+        .join(Loan, Transaction.loan_id == Loan.id)
+        .filter(Loan.caja_id == caja_id, Transaction.transaction_type == "interest_payment")
+        .group_by(Transaction.loan_id)
+        .all()
+    )
+
     loan_rows = []
     for loan in active_loans:
-        member = db.get(Member, loan.member_id)
-        last_interest = (
-            db.query(Transaction)
-            .filter(
-                Transaction.loan_id == loan.id,
-                Transaction.transaction_type == "interest_payment",
-            )
-            .order_by(Transaction.transaction_date.desc())
-            .first()
-        )
+        member = loan.member
+        last_interest_date = last_interest_map.get(loan.id)
         monthly_interest = (
             Decimal(str(loan.outstanding_balance)) * Decimal(str(loan.interest_rate))
         ).quantize(CENT, rounding=ROUND_HALF_UP)
 
         interest_current = (
-            last_interest is not None
-            and last_interest.transaction_date >= start_of_month
+            last_interest_date is not None
+            and last_interest_date >= start_of_month
         )
         loan_rows.append(
             {
@@ -192,7 +229,7 @@ def generate_reporte_caja(caja_id: int, db: Session) -> bytes:
                 "member_name": member.name if member else "—",
                 "group": member.member_group.name if member and member.member_group else "—",
                 "monthly_interest": monthly_interest,
-                "last_interest_date": last_interest.transaction_date if last_interest else None,
+                "last_interest_date": last_interest_date,
                 "interest_current": interest_current,
             }
         )
@@ -207,8 +244,9 @@ def generate_reporte_caja(caja_id: int, db: Session) -> bytes:
             "caja": caja,
             "total_ahorros": total_ahorros,
             "total_prestado": total_prestado,
+            "saldo_insoluto": saldo_insoluto,
             "total_rendimientos": total_rendimientos,
-            "capital_disponible": total_ahorros - total_prestado,
+            "capital_disponible": total_ahorros - saldo_insoluto,
             "loan_rows": loan_rows,
             "n_current": n_current,
             "n_overdue": n_overdue,
@@ -216,4 +254,27 @@ def generate_reporte_caja(caja_id: int, db: Session) -> bytes:
             "generated_at": today,
         },
     )
-    return _to_pdf(html)
+    return html
+
+
+# ── Cierre de caja ────────────────────────────────────────────────────────────
+
+def render_cierre_caja(caja_id: int, db: Session) -> str:
+    """
+    Reporte del cierre. Usa el mismo resumen que la pantalla y la confirmación:
+    preliminar mientras no haya cierre confirmado, definitivo desde el corte guardado.
+    Incluye a TODOS los socios elegibles en orden alfabético (sin filtros de pantalla).
+    """
+    from app.services.cierre import CierreError, build_resumen
+
+    try:
+        r = build_resumen(db, caja_id)
+    except CierreError as e:
+        raise ValueError(e.message)
+
+    return _render("cierre_caja.html", {
+        "r": r,
+        "t": r["totales"],
+        "generated_at": date.today(),
+        "fecha_corte": date.fromisoformat(r["fecha_corte"]),
+    })

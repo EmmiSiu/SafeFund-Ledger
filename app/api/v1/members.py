@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.base import Aportacion, CajaConfig, Loan, Member, QuincenaPendiente
 from app.schemas.members import MemberCreate, MemberRead
+from app.services.savings import member_savings, sync_member_savings
 
 router = APIRouter(prefix="/members", tags=["Members"])
 
@@ -153,11 +154,7 @@ def recalcular_aportaciones(payload: RecalcularRequest, db: Session = Depends(ge
 
     # Recalcular savings_balance desde la suma real en BD
     for m in members:
-        apo_sum = db.query(func.coalesce(func.sum(Aportacion.monto), 0)).filter(
-            Aportacion.member_id == m.id,
-            Aportacion.caja_id == payload.caja_id,
-        ).scalar() or Decimal("0")
-        m.savings_balance = Decimal(str(apo_sum))
+        sync_member_savings(db, m)
     db.commit()
 
     return {"ok": True, "updated": updated, "members_processed": len(members)}
@@ -209,7 +206,8 @@ def retirar_member(
         )
 
     fecha = payload.fecha_retiro or date.today()
-    monto_devolucion = Decimal(str(member.savings_balance))
+    # Se devuelve el ahorro real según movimientos (no la copia guardada).
+    monto_devolucion = member_savings(db, member)
 
     # Si tenía ahorros acumulados, registrar aportación negativa de salida (log contable)
     if monto_devolucion > 0:

@@ -7,7 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.base import CajaConfig, Loan, Member, Transaction
+from app.models.base import Aportacion, CajaConfig, Loan, Member, Transaction
 from app.services.finance_engine import calculate_monthly_interest
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -19,6 +19,7 @@ class DashboardMetrics(BaseModel):
     caja_id: int
     caja_name: str
     total_en_caja: Decimal          # ahorros acumulados
+    total_prestado: Decimal         # capital inicial de préstamos activos (interno + externo)
     capital_en_prestamos: Decimal   # saldo insoluto total
     intereses_totales: Decimal      # rendimiento histórico (all-time)
     proyeccion_cierre: Decimal      # ahorros + intereses proyectados al cierre
@@ -36,6 +37,15 @@ def get_metrics(caja_id: int = Query(...), db: Session = Depends(get_db)):
 
     capital_en_prestamos = Decimal(str(
         db.query(func.sum(Loan.outstanding_balance))
+        .filter(Loan.caja_id == caja_id, Loan.status == "active")
+        .scalar() or 0
+    ))
+
+    # Capital realmente desembolsado y aún activo (interno + externo).
+    # Distinto de capital_en_prestamos (saldo insoluto): este no baja con los
+    # abonos a capital, es el histórico de lo prestado que sigue vigente.
+    total_prestado = Decimal(str(
+        db.query(func.sum(Loan.initial_amount))
         .filter(Loan.caja_id == caja_id, Loan.status == "active")
         .scalar() or 0
     ))
@@ -102,6 +112,7 @@ def get_metrics(caja_id: int = Query(...), db: Session = Depends(get_db)):
         caja_id=caja_id,
         caja_name=caja.name,
         total_en_caja=total_ahorros,
+        total_prestado=total_prestado,
         capital_en_prestamos=capital_en_prestamos,
         intereses_totales=intereses_totales,
         proyeccion_cierre=proyeccion_cierre,
@@ -118,15 +129,18 @@ def get_chart_data(caja_id: int = Query(...), db: Session = Depends(get_db)):
     if not db.get(CajaConfig, caja_id):
         raise HTTPException(status_code=404, detail="Caja no encontrada.")
 
+    # Los ahorros quincenales se registran como Aportacion (no como Transaction:
+    # ese tipo "savings" es un remanente de la importación inicial desde Excel
+    # y ya no se usa en el flujo normal de quincenas/al-corriente).
     savings_rows = (
         db.query(
-            func.strftime("%Y-%m", Transaction.transaction_date).label("month"),
-            func.sum(Transaction.amount).label("total"),
+            func.strftime("%Y-%m", Aportacion.fecha_aportacion).label("month"),
+            func.sum(Aportacion.monto).label("total"),
         )
-        .join(Member, Transaction.member_id == Member.id)
-        .filter(Member.caja_id == caja_id, Transaction.transaction_type == "savings")
-        .group_by(func.strftime("%Y-%m", Transaction.transaction_date))
-        .order_by(func.strftime("%Y-%m", Transaction.transaction_date))
+        .join(Member, Aportacion.member_id == Member.id)
+        .filter(Member.caja_id == caja_id, Member.member_type == "dentro")
+        .group_by(func.strftime("%Y-%m", Aportacion.fecha_aportacion))
+        .order_by(func.strftime("%Y-%m", Aportacion.fecha_aportacion))
         .all()
     )
 

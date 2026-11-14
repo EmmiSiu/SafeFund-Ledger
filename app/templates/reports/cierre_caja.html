@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<title>Cierre de caja — {{ r.caja.name }}</title>
+<style>
+  @page {
+    size: A4 landscape;
+    margin: 12mm 10mm 14mm 10mm;
+    @bottom-center {
+      content: "Pág. " counter(page) " de " counter(pages);
+      font-size: 8pt;
+      color: #64748b;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "DejaVu Sans", "Segoe UI", sans-serif; font-size: 8.5pt; color: #1e293b; background: #fff; }
+  @media screen { body { max-width: 1180px; margin: 0 auto; padding: 16px; } }
+
+  .header { display: flex; justify-content: space-between; align-items: flex-start;
+            border-bottom: 2.5px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; }
+  .header h1 { font-size: 17pt; font-weight: bold; color: #0f172a; letter-spacing: -0.5px; }
+  .header p  { font-size: 8pt; color: #475569; margin-top: 1px; }
+  .meta { text-align: right; font-size: 8pt; color: #475569; line-height: 1.6; }
+  .meta strong { color: #0f172a; font-size: 10pt; }
+
+  .stamp { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 8pt;
+           font-weight: bold; letter-spacing: 0.6px; margin-top: 4px; }
+  .stamp-prelim { background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
+  .stamp-final  { background: #dcfce7; color: #166534; border: 1px solid #22c55e; }
+
+  .notice { border: 1px solid #f59e0b; background: #fffbeb; color: #78350f; border-radius: 6px;
+            padding: 8px 10px; margin-bottom: 12px; font-size: 8pt; }
+  .notice ul { margin: 4px 0 0 16px; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 12px; }
+  .kpi { border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; background: #f8fafc; }
+  .kpi .label { font-size: 7pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+  .kpi .value { font-size: 11.5pt; font-weight: bold; font-family: monospace; color: #0f172a; }
+  .kpi .sub   { font-size: 7pt; color: #64748b; margin-top: 2px; }
+  .kpi-strong { background: #ecfdf5; border-color: #6ee7b7; }
+  .kpi-strong .value { color: #065f46; }
+
+  .section-title { font-size: 10pt; font-weight: bold; color: #0f172a;
+                   border-left: 3px solid #10b981; padding-left: 7px; margin: 14px 0 6px 0; }
+  .hint { font-size: 7.5pt; color: #64748b; margin-bottom: 6px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 7.6pt; }
+  thead { display: table-header-group; }
+  thead tr { background: #0f172a; color: #fff; }
+  thead th { padding: 5px 6px; text-align: left; font-weight: 600; font-size: 7pt; letter-spacing: 0.2px; }
+  th.right, td.right { text-align: right; }
+  th.center, td.center { text-align: center; }
+  tbody tr { page-break-inside: avoid; }
+  tbody tr:nth-child(even) { background: #f8fafc; }
+  tbody td { padding: 4.5px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  td.right { font-family: monospace; white-space: nowrap; }
+  tfoot tr { background: #f1f5f9; font-weight: bold; }
+  tfoot td { padding: 6px; border-top: 2px solid #cbd5e1; }
+  .muted { color: #94a3b8; }
+  .small { font-size: 6.8pt; color: #64748b; }
+  .strong { font-weight: bold; }
+
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 6.8pt; font-weight: bold; white-space: nowrap; }
+  .tag-green { background: #dcfce7; color: #166534; }
+  .tag-amber { background: #fef3c7; color: #92400e; }
+  .tag-red   { background: #fee2e2; color: #991b1b; }
+  .tag-slate { background: #e2e8f0; color: #334155; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .box { border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; }
+  .box h3 { font-size: 8.5pt; color: #0f172a; margin-bottom: 4px; }
+  .box .row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 8pt; }
+  .box .row span:last-child { font-family: monospace; }
+
+  .signs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 30px; margin-top: 34px; }
+  .sign { border-top: 1px solid #475569; padding-top: 4px; text-align: center; font-size: 7.5pt; color: #475569; }
+
+  .doc-footer { margin-top: 14px; padding-top: 6px; border-top: 1px solid #e2e8f0;
+                display: flex; justify-content: space-between; font-size: 7pt; color: #94a3b8; }
+</style>
+</head>
+<body>
+{% set pct = "{:.4f}".format %}
+
+<div class="header">
+  <div>
+    <h1>SafeFund Ledger</h1>
+    <p>Cierre de caja y reparto de rendimientos</p>
+    {% if r.confirmado %}
+      <span class="stamp stamp-final">✔ DEFINITIVO · Cierre #{{ r.cierre.id }}</span>
+    {% else %}
+      <span class="stamp stamp-prelim">⚠ PRELIMINAR · Sin validez como cierre</span>
+    {% endif %}
+  </div>
+  <div class="meta">
+    <strong>{{ r.caja.name }}</strong><br/>
+    Fecha de corte: <b>{{ fecha_corte | fdate }}</b><br/>
+    {% if r.confirmado %}Confirmado: {{ r.cierre.confirmado_en | replace("T", " ") }}<br/>{% endif %}
+    Generado: {{ generated_at | fdate }}
+  </div>
+</div>
+
+{% if not r.confirmado and (r.bloqueos or r.reparto.errores) %}
+<div class="notice">
+  <b>Este reparto es preliminar.</b> Antes de confirmar el cierre hay que resolver:
+  <ul>
+    {% for e in r.reparto.errores %}<li>{{ e }}</li>{% endfor %}
+    {% if r.bloqueos %}<li>{{ r.bloqueos | length }} préstamo(s)/socio(s) con deuda sin liquidar (ver «Pendientes para cerrar»).</li>{% endif %}
+  </ul>
+</div>
+{% endif %}
+
+<!-- ── Resumen del ciclo ─────────────────────────────────────────────────── -->
+<div class="kpi-grid">
+  <div class="kpi">
+    <div class="label">Ahorro aportado</div>
+    <div class="value">{{ t.ahorro_elegible | mxn }}</div>
+    <div class="sub">{{ t.n_socios }} socios elegibles</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Préstamos otorgados</div>
+    <div class="value">{{ r.socios | sum(attribute="n_prestamos") }}</div>
+    <div class="sub">{{ t.n_pidieron }} socios pidieron</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Deuda al corte</div>
+    <div class="value">{{ t.deuda_capital | mxn }}</div>
+    <div class="sub">+ {{ t.interes_pendiente | mxn }} interés pend.</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Intereses cobrados</div>
+    <div class="value">{{ t.intereses_cobrados | mxn }}</div>
+    <div class="sub">+ {{ t.interes_por_compensar | mxn }} por compensar</div>
+  </div>
+  <div class="kpi kpi-strong">
+    <div class="label">Rendimiento a repartir</div>
+    <div class="value">{{ t.rendimiento_total | mxn }}</div>
+    <div class="sub">100 % entre elegibles</div>
+  </div>
+  <div class="kpi kpi-strong">
+    <div class="label">Total a entregar</div>
+    <div class="value">{{ t.total_a_entregar | mxn }}</div>
+    <div class="sub">ahorro a devolver + rendimiento</div>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="box">
+    <h3>Ponderación del reparto</h3>
+    <div class="row"><span>Socios que pidieron préstamo — factor</span><span>1.0000</span></div>
+    <div class="row"><span>Socios que nunca pidieron — factor</span><span>{{ r.borrador.factor_sin_prestamo }}</span></div>
+    <div class="row"><span>Interés pendiente incluido en la deuda</span><span>{{ "Sí" if r.borrador.incluir_interes else "No" }}</span></div>
+    <div class="row"><span>Porcentajes ajustados a mano</span><span>{{ r.borrador.n_ajustes }}</span></div>
+  </div>
+  <div class="box">
+    <h3>Rendimiento por peso ahorrado</h3>
+    <div class="row"><span>Pidieron préstamo ({{ r.reparto.con_prestamo.n }}) · ahorro {{ r.reparto.con_prestamo.ahorro | mxn }}</span>
+      <span>{{ r.reparto.con_prestamo.rendimiento | mxn }} · {{ r.reparto.con_prestamo.rend_pct }} %</span></div>
+    <div class="row"><span>Nunca pidieron ({{ r.reparto.sin_prestamo.n }}) · ahorro {{ r.reparto.sin_prestamo.ahorro | mxn }}</span>
+      <span>{{ r.reparto.sin_prestamo.rendimiento | mxn }} · {{ r.reparto.sin_prestamo.rend_pct }} %</span></div>
+    <div class="row"><span>Suma de porcentajes</span><span>{{ pct(r.reparto.total_pct | float) }} %</span></div>
+  </div>
+</div>
+
+<!-- ── Detalle por socio ─────────────────────────────────────────────────── -->
+<div class="section-title">Detalle por socio</div>
+<p class="hint">Todos los socios internos con cuota quincenal mayor a $0, en orden alfabético.
+  «Saldo tras ahorro» = deuda − ahorro si falta, o ahorro que sobra si cubre.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:16px">#</th>
+      <th>Socio</th>
+      <th class="right">Ahorro acumulado</th>
+      <th class="center">¿Pidió?</th>
+      <th class="right">Desembolsado</th>
+      <th>Préstamos (estado)</th>
+      <th class="right">Deuda al corte</th>
+      <th class="right">Saldo tras ahorro</th>
+      <th>Pago</th>
+      <th class="right">% reparto</th>
+      <th class="right">Rendimiento</th>
+      <th class="right">A entregar</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in r.socios %}
+    <tr>
+      <td class="muted">{{ loop.index }}</td>
+      <td><span class="strong">{{ s.name }}</span><br/><span class="small">{{ s.group }}</span></td>
+      <td class="right">{{ s.ahorro | mxn }}</td>
+      <td class="center">
+        {% if s.pidio_prestamo %}<span class="tag tag-slate">Sí</span>{% else %}<span class="muted">No</span>{% endif %}
+      </td>
+      <td class="right">{% if s.pidio_prestamo %}{{ s.monto_desembolsado | mxn }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>
+        {% for l in s.loans %}
+          <div class="small">#{{ l.id }} · {{ l.initial_amount | mxn }} ·
+            {% if l.status == "active" %}<b>Activo</b> — debe {{ l.liquidable | mxn }}
+            {% elif l.status == "paid" %}Liquidado
+            {% else %}{{ l.status }}{% endif %}
+          </div>
+        {% else %}<span class="muted">—</span>{% endfor %}
+      </td>
+      <td class="right">
+        {% if s.deuda_total | float > 0 %}{{ s.deuda_total | mxn }}
+          {% if r.borrador.incluir_interes and s.interes_pendiente | float > 0 %}<br/><span class="small">incl. {{ s.interes_pendiente | mxn }} int.</span>{% endif %}
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td class="right">
+        {% if s.n_activos == 0 %}<span class="muted">—</span>
+        {% elif s.cubre %}<span class="tag tag-green">Sobran {{ s.devolver_si_compensa | mxn }}</span>
+        {% else %}<span class="tag tag-red">Faltan {{ s.faltante | mxn }}</span>{% endif %}
+      </td>
+      <td>
+        {% if s.instruccion == "ahorro" %}<span class="tag tag-green">Con ahorro</span>
+        {% elif s.instruccion == "separado" %}<span class="tag tag-amber">Por separado</span>
+        {% elif s.instruccion == "por_definir" %}<span class="tag tag-red">Por definir</span>
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td class="right">{{ pct(s.porcentaje | float) }} %{% if s.ajustado %} *{% endif %}</td>
+      <td class="right">{{ s.rendimiento | mxn }}</td>
+      <td class="right strong">{{ s.total_a_entregar | mxn }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="2">TOTAL · {{ t.n_socios }} socios</td>
+      <td class="right">{{ t.ahorro_elegible | mxn }}</td>
+      <td></td>
+      <td class="right">{{ t.total_desembolsado | mxn }}</td>
+      <td></td>
+      <td class="right"></td>
+      <td class="right small">compensado {{ t.total_compensado | mxn }}</td>
+      <td></td>
+      <td class="right">{{ pct(r.reparto.total_pct | float) }} %</td>
+      <td class="right">{{ t.rendimiento_total | mxn }}</td>
+      <td class="right">{{ t.total_a_entregar | mxn }}</td>
+    </tr>
+  </tfoot>
+</table>
+{% if r.borrador.n_ajustes %}<p class="hint" style="margin-top:4px">* Porcentaje ajustado manualmente.</p>{% endif %}
+
+{% if r.bloqueos and not r.confirmado %}
+<div class="section-title">Pendientes para cerrar</div>
+<table>
+  <thead><tr><th>Socio / deudor</th><th>Situación</th><th class="right">Capital pendiente</th></tr></thead>
+  <tbody>
+    {% for b in r.bloqueos %}
+    <tr><td class="strong">{{ b.name }}</td><td>{{ b.detalle }}</td><td class="right">{{ b.monto | mxn }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if r.confirmado %}
+<div class="signs">
+  <div class="sign">Tesorería</div>
+  <div class="sign">Presidencia</div>
+  <div class="sign">Testigo</div>
+</div>
+{% endif %}
+
+<div class="doc-footer">
+  <span>SafeFund Ledger · {{ "Cierre definitivo" if r.confirmado else "Reparto preliminar" }} · {{ r.caja.name }}</span>
+  <span>Huella del cálculo: {{ r.hash[:12] }}</span>
+</div>
+
+</body>
+</html>

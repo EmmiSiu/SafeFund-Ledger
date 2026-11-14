@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.money import CENT
 from app.models.base import Aportacion, CajaConfig, Loan, Member, Transaction
+from app.services.savings import sync_member_savings
 from app.schemas.aportaciones import (
     AportacionCreate,
     AportacionRead,
@@ -41,7 +42,7 @@ def registrar_aportacion(payload: AportacionCreate, db: Session = Depends(get_db
             notas=payload.notas,
         )
         db.add(aportacion)
-        member.savings_balance = Decimal(str(member.savings_balance)) + payload.monto
+        sync_member_savings(db, member)
         db.commit()
         db.refresh(aportacion)
     except Exception as exc:
@@ -143,11 +144,9 @@ def eliminar_aportacion(aportacion_id: int, db: Session = Depends(get_db)):
 
     member = db.get(Member, aportacion.member_id)
     try:
-        if member:
-            member.savings_balance = (
-                Decimal(str(member.savings_balance)) - Decimal(str(aportacion.monto))
-            ).quantize(CENT)
         db.delete(aportacion)
+        if member:
+            sync_member_savings(db, member)
         db.commit()
     except Exception as exc:
         db.rollback()

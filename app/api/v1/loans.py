@@ -35,6 +35,7 @@ from app.schemas.loans import (
     RegularizarLoanNoVencido,
     TransaccionResumen,
 )
+from app.services.cierre import CierreError, assert_loan_within_capacity, lock_for_write
 from app.services.loan_engine import (
     build_loan_timeline,
     calculate_accrued_interest,
@@ -573,6 +574,16 @@ def get_loan(loan_id: int, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=LoanRead, status_code=status.HTTP_201_CREATED)
 def create_loan(payload: LoanCreate, db: Session = Depends(get_db)):
+    if payload.validar_respaldo:
+        # Candado de escritura + revalidación: dos confirmaciones simultáneas no
+        # pueden usar el mismo respaldo de ahorro ni el mismo efectivo.
+        lock_for_write(db)
+        try:
+            assert_loan_within_capacity(db, payload.caja_id, payload.member_id, payload.initial_amount)
+        except CierreError as e:
+            db.rollback()
+            raise HTTPException(status_code=e.status, detail=e.message)
+
     caja = db.get(CajaConfig, payload.caja_id)
     if not caja:
         raise HTTPException(status_code=404, detail="Caja no encontrada.")

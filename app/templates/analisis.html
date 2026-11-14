@@ -1,0 +1,1059 @@
+{% extends "base.html" %}
+{% block title %}Análisis de caja — SafeFund Ledger{% endblock %}
+
+{% block content %}
+{% macro icon(d, cls="w-3.5 h-3.5") %}<svg class="{{ cls }} flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ d }}"/></svg>{% endmacro %}
+{% set I_CHECK = "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" %}
+{% set I_WARN  = "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" %}
+{% set I_CLOCK = "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" %}
+{% set I_MINUS = "M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" %}
+{% set I_LOCK  = "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" %}
+{% set I_DOC   = "M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" %}
+{% set I_QUESTION = "M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" %}
+
+<div class="p-4 sm:p-6 lg:p-8 max-w-[1400px]"
+     x-data='analisisApp({{ current_caja_id or "null" }}, "{{ today }}")'>
+
+  {% if not current_caja_id %}
+  <div class="flex flex-col items-center justify-center py-24 text-center">
+    <p class="text-slate-300 font-medium">No hay cajas configuradas</p>
+    <p class="text-slate-500 text-sm mt-1">Crea una caja en Configuración para ver su análisis.</p>
+    <a href="/settings" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold transition-colors">Ir a Configuración</a>
+  </div>
+  {% else %}
+
+  <!-- ── Encabezado ─────────────────────────────────────────────────────────── -->
+  <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6">
+    <div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <h1 class="text-xl font-semibold text-slate-100">Análisis de caja</h1>
+        <template x-if="r && r.confirmado">
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30">
+            {{ icon(I_LOCK) }} Cierre confirmado
+          </span>
+        </template>
+        <template x-if="r && !r.confirmado">
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-500/10 text-amber-300 ring-1 ring-amber-500/25">
+            {{ icon(I_CLOCK) }} Ciclo abierto
+          </span>
+        </template>
+      </div>
+      <p class="text-sm text-slate-500 mt-0.5">{{ caja_name }}</p>
+    </div>
+
+    <div class="flex flex-wrap items-end gap-3">
+      <div>
+        <label for="fechaCorte" class="block text-xs font-medium text-slate-500 uppercase tracking-widest mb-1.5">Fecha de corte</label>
+        <div class="flex items-center gap-2">
+          <input id="fechaCorte" type="date" :value="r ? r.fecha_corte : ''" :disabled="!r || r.confirmado || busy"
+                 @change="setFecha($event.target.value)"
+                 class="bg-slate-800/80 border border-slate-700/60 focus:border-emerald-500/70 rounded-xl px-3 py-2 text-sm text-slate-200
+                        focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all disabled:opacity-60 [color-scheme:dark]"/>
+          <button type="button" x-show="r && !r.confirmado && r.borrador.fecha_corte_fija" x-cloak @click="setFecha(null)"
+                  class="px-3 py-2 text-xs font-medium text-slate-300 rounded-xl bg-slate-700/50 hover:bg-slate-700 transition-colors">
+            Usar hoy
+          </button>
+        </div>
+      </div>
+      <a :href="'/api/v1/reports/cierre/' + cajaId" target="_blank" rel="noopener"
+         class="inline-flex items-center gap-2 px-4 py-2 bg-slate-700/60 hover:bg-slate-700 text-slate-100 rounded-xl text-sm font-semibold transition-colors border border-slate-600/50">
+        {{ icon(I_DOC, "w-4 h-4") }}
+        <span x-text="r && r.confirmado ? 'PDF definitivo' : 'PDF preliminar'">PDF</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Error de carga -->
+  <div x-show="loadError" x-cloak role="alert"
+       class="mb-6 flex items-start gap-3 bg-red-900/20 border border-red-700/40 rounded-2xl px-5 py-4">
+    <span class="text-red-400 mt-0.5">{{ icon(I_WARN, "w-5 h-5") }}</span>
+    <div class="flex-1">
+      <p class="text-sm font-medium text-red-200">No se pudo cargar el análisis</p>
+      <p class="text-sm text-red-300/80 mt-0.5" x-text="loadError"></p>
+    </div>
+    <button @click="load()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-800/60 hover:bg-red-700 text-red-100 transition-colors">Reintentar</button>
+  </div>
+
+  <!-- Esqueleto de carga -->
+  <div x-show="!r && !loadError" class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6" aria-busy="true" aria-label="Cargando análisis">
+    <template x-for="i in 4" :key="i">
+      <div class="h-28 rounded-2xl bg-slate-800/60 border border-slate-700/50 animate-pulse"></div>
+    </template>
+  </div>
+
+  <template x-if="r">
+  <div>
+
+    <!-- Aviso: cierre confirmado -->
+    <div x-show="r.confirmado" x-cloak
+         class="mb-6 flex items-start gap-3 bg-emerald-900/20 border border-emerald-700/40 rounded-2xl px-5 py-4">
+      <span class="text-emerald-400 mt-0.5">{{ icon(I_LOCK, "w-5 h-5") }}</span>
+      <div>
+        <p class="text-sm font-medium text-emerald-200">
+          Esta caja se cerró con corte al <span x-text="fmtDate(r.fecha_corte)"></span>
+          <span x-show="r.cierre"> · Cierre #<span x-text="r.cierre && r.cierre.id"></span></span>
+        </p>
+        <p class="text-sm text-emerald-300/70 mt-0.5">Lo que ves es la copia guardada del cierre. Los movimientos posteriores no la modifican.</p>
+      </div>
+    </div>
+
+    <!-- Aviso: saldos sin conciliar -->
+    <div x-show="!r.confirmado && r.alertas_ahorro.length" x-cloak role="alert"
+         class="mb-6 flex flex-col sm:flex-row sm:items-center gap-3 bg-amber-900/20 border border-amber-700/40 rounded-2xl px-5 py-4">
+      <span class="text-amber-400">{{ icon(I_WARN, "w-5 h-5") }}</span>
+      <div class="flex-1">
+        <p class="text-sm font-medium text-amber-200">
+          <span x-text="r.alertas_ahorro.length"></span> saldo(s) de ahorro guardado(s) no coinciden con sus movimientos
+        </p>
+        <p class="text-sm text-amber-300/70 mt-0.5">
+          Esta pantalla usa el saldo real calculado. Concilia para que el resto del sistema muestre lo mismo:
+          <span x-text="r.alertas_ahorro.slice(0, 3).map(a => a.member_name + ' (' + money(a.diferencia) + ')').join(', ')"></span><span x-show="r.alertas_ahorro.length > 3">…</span>
+        </p>
+      </div>
+      <button @click="reconciliar()" :disabled="busy"
+              class="px-4 py-2 text-sm font-semibold rounded-xl bg-amber-600 hover:bg-amber-500 text-white transition-colors disabled:opacity-60">
+        Conciliar saldos
+      </button>
+    </div>
+
+    <!-- ── Tarjetas ─────────────────────────────────────────────────────────── -->
+    <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      <div class="bg-slate-800/60 rounded-2xl p-4 sm:p-5 border border-slate-700/50">
+        <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Ahorro</p>
+        <p class="text-xl sm:text-2xl font-bold text-emerald-400 font-mono tracking-tight mt-2" x-text="money(r.totales.ahorro)"></p>
+        <p class="text-xs text-slate-500 mt-1.5"><span x-text="r.totales.n_socios"></span> socios con cuota</p>
+      </div>
+      <div class="bg-slate-800/60 rounded-2xl p-4 sm:p-5 border border-slate-700/50">
+        <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Deuda</p>
+        <p class="text-xl sm:text-2xl font-bold text-slate-100 font-mono tracking-tight mt-2" x-text="money(r.totales.deuda_capital)"></p>
+        <p class="text-xs text-slate-500 mt-1.5">+ <span x-text="money(r.totales.interes_pendiente)"></span> de interés pendiente</p>
+      </div>
+      <div class="bg-slate-800/60 rounded-2xl p-4 sm:p-5 border border-slate-700/50">
+        <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Liquidez</p>
+        <p class="text-xl sm:text-2xl font-bold font-mono tracking-tight mt-2"
+           :class="num(r.totales.liquidez) < 0 ? 'text-red-400' : 'text-slate-100'" x-text="money(r.totales.liquidez)"></p>
+        <p class="text-xs text-slate-500 mt-1.5">Ahorro + intereses − deuda</p>
+      </div>
+      <div class="bg-slate-800/60 rounded-2xl p-4 sm:p-5 border border-slate-700/50">
+        <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Intereses cobrados</p>
+        <p class="text-xl sm:text-2xl font-bold text-slate-100 font-mono tracking-tight mt-2" x-text="money(r.totales.intereses_cobrados)"></p>
+        <p class="text-xs text-slate-500 mt-1.5">Rendimiento a repartir al cierre</p>
+      </div>
+    </div>
+
+    <!-- ── Pestañas ─────────────────────────────────────────────────────────── -->
+    <div class="flex items-center gap-1 p-1 mb-5 bg-slate-800/60 border border-slate-700/50 rounded-2xl w-full sm:w-fit overflow-x-auto" role="tablist" aria-label="Secciones del análisis">
+      <template x-for="t in tabs" :key="t.id">
+        <button type="button" role="tab" :aria-selected="tab === t.id" @click="setTab(t.id)"
+                :class="tab === t.id ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/40'"
+                class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60">
+          <span x-text="t.label"></span>
+          <span x-show="t.id === 'cierre' && !r.confirmado && pendientes > 0" x-cloak
+                class="min-w-[20px] px-1.5 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/20 text-amber-300" x-text="pendientes"></span>
+        </button>
+      </template>
+    </div>
+
+    <!-- ═════════════════════════ SOCIOS ═════════════════════════ -->
+    <section x-show="tab === 'socios'" role="tabpanel">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+        <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar socios">
+          <template x-for="f in filtros" :key="f.id">
+            <button type="button" @click="filtro = f.id" :aria-pressed="filtro === f.id"
+                    :class="filtro === f.id ? 'bg-slate-100 text-slate-900 border-slate-100' : 'bg-slate-800/60 text-slate-300 border-slate-700/60 hover:border-slate-500'"
+                    class="px-3.5 py-1.5 rounded-full text-sm font-medium border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60">
+              <span x-text="f.label"></span>
+              <span class="ml-1 opacity-60" x-text="f.count()"></span>
+            </button>
+          </template>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="relative">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
+            </svg>
+            <input type="search" x-model="search" placeholder="Buscar socio…" aria-label="Buscar socio"
+                   class="w-full sm:w-56 bg-slate-800/80 border border-slate-700/60 focus:border-emerald-500/60 rounded-xl pl-9 pr-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none transition-colors"/>
+          </div>
+          <button type="button" x-show="!r.confirmado && porDefinirQueCubren.length" x-cloak @click="liquidarQueCubren()" :disabled="busy"
+                  class="px-3.5 py-2 rounded-xl text-sm font-medium bg-emerald-600/90 hover:bg-emerald-500 text-white transition-colors disabled:opacity-60">
+            Liquidar con ahorro a los <span x-text="porDefinirQueCubren.length"></span> que cubren
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm min-w-[980px]">
+            <thead>
+              <tr class="border-b border-slate-700/60 bg-slate-900/40 text-xs font-medium text-slate-500 uppercase tracking-widest">
+                <th scope="col" class="text-left px-4 py-3">Socio</th>
+                <th scope="col" class="text-right px-4 py-3">Ahorro</th>
+                <th scope="col" class="text-left px-4 py-3">Préstamos</th>
+                <th scope="col" class="text-right px-4 py-3">Deuda al corte</th>
+                <th scope="col" class="text-left px-4 py-3">Cobertura</th>
+                <th scope="col" class="text-left px-4 py-3">Instrucción de pago</th>
+                <th scope="col" class="text-right px-4 py-3">Si se compensa</th>
+                <th scope="col" class="px-2 py-3"><span class="sr-only">Detalle</span></th>
+              </tr>
+            </thead>
+            <template x-for="s in sociosFiltrados" :key="s.member_id">
+              <tbody class="border-b border-slate-700/30">
+                <tr class="hover:bg-slate-700/20 transition-colors" :class="open[s.member_id] ? 'bg-slate-700/20' : ''">
+                  <td class="px-4 py-3">
+                    <p class="font-medium text-slate-100" x-text="s.name"></p>
+                    <p class="text-xs text-slate-500" x-text="s.group + ' · cuota ' + money(s.cuota)"></p>
+                  </td>
+                  <td class="px-4 py-3 text-right font-mono text-slate-100" x-text="money(s.ahorro)"></td>
+                  <td class="px-4 py-3">
+                    <template x-if="s.n_activos > 0">
+                      <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs whitespace-nowrap font-medium bg-amber-500/10 text-amber-300 ring-1 ring-amber-500/20">
+                        {{ icon(I_CLOCK) }} <span x-text="s.n_activos + (s.n_activos === 1 ? ' activo' : ' activos')"></span>
+                      </span>
+                    </template>
+                    <template x-if="s.n_activos === 0 && s.pidio_prestamo">
+                      <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs whitespace-nowrap font-medium bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/20">
+                        {{ icon(I_CHECK) }} <span x-text="s.n_prestamos + (s.n_prestamos === 1 ? ' liquidado' : ' liquidados')"></span>
+                      </span>
+                    </template>
+                    <template x-if="!s.pidio_prestamo">
+                      <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs whitespace-nowrap font-medium bg-slate-700/50 text-slate-400">
+                        {{ icon(I_MINUS) }} Nunca pidió
+                      </span>
+                    </template>
+                  </td>
+                  <td class="px-4 py-3 text-right">
+                    <template x-if="s.n_activos > 0">
+                      <div>
+                        <p class="font-mono text-slate-100" x-text="money(s.deuda_total)"></p>
+                        <p class="text-xs text-slate-500" x-show="r.borrador.incluir_interes && num(s.interes_pendiente) > 0"
+                           x-text="'incluye ' + money(s.interes_pendiente) + ' de interés'"></p>
+                      </div>
+                    </template>
+                    <template x-if="s.n_activos === 0"><span class="text-slate-600">—</span></template>
+                  </td>
+                  <td class="px-4 py-3">
+                    <template x-if="s.n_activos > 0 && s.cubre">
+                      <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs whitespace-nowrap font-medium bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/20">
+                        {{ icon(I_CHECK) }} El ahorro cubre la deuda
+                      </span>
+                    </template>
+                    <template x-if="s.n_activos > 0 && !s.cubre">
+                      <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs whitespace-nowrap font-semibold bg-red-500/10 text-red-300 ring-1 ring-red-500/25">
+                        {{ icon(I_WARN) }} <span x-text="'Faltan ' + money(s.faltante)"></span>
+                      </span>
+                    </template>
+                    <template x-if="s.n_activos === 0"><span class="text-xs text-slate-500">Sin deuda</span></template>
+                  </td>
+                  <td class="px-4 py-3">
+                    <template x-if="s.n_activos > 0">
+                      <div class="relative w-48">
+                        <select :value="s.instruccion" @change="setInstruccion([s.member_id], $event.target.value)"
+                                :disabled="r.confirmado || busy" :aria-label="'Instrucción de pago de ' + s.name"
+                                :class="{
+                                  'border-emerald-500/40 text-emerald-200': s.instruccion === 'ahorro',
+                                  'border-amber-500/40 text-amber-200': s.instruccion === 'separado',
+                                  'border-red-500/40 text-red-200': s.instruccion === 'por_definir',
+                                }"
+                                class="w-full appearance-none bg-slate-900/70 border rounded-lg pl-3 pr-8 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-70 cursor-pointer disabled:cursor-default">
+                          <option value="por_definir">? Por definir</option>
+                          <option value="ahorro">✓ Liquidar con ahorro</option>
+                          <option value="separado">↗ Pago por separado</option>
+                        </select>
+                        <svg class="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                      </div>
+                    </template>
+                    <template x-if="s.n_activos === 0"><span class="text-slate-600">—</span></template>
+                  </td>
+                  <td class="px-4 py-3 text-right">
+                    <template x-if="s.n_activos > 0 && s.cubre">
+                      <div>
+                        <p class="font-mono text-emerald-300" x-text="money(s.devolver_si_compensa)"></p>
+                        <p class="text-xs text-slate-500">ahorro a devolver</p>
+                      </div>
+                    </template>
+                    <template x-if="s.n_activos > 0 && !s.cubre">
+                      <div>
+                        <p class="font-mono text-red-300" x-text="money(s.faltante)"></p>
+                        <p class="text-xs text-slate-500">faltante por pagar</p>
+                      </div>
+                    </template>
+                    <template x-if="s.n_activos === 0"><span class="text-slate-600">—</span></template>
+                  </td>
+                  <td class="px-2 py-3 text-right">
+                    <button type="button" x-show="s.loans.length" @click="open[s.member_id] = !open[s.member_id]"
+                            :aria-expanded="!!open[s.member_id]" :aria-label="'Ver préstamos de ' + s.name"
+                            class="p-2 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60">
+                      <svg class="w-4 h-4 transition-transform" :class="open[s.member_id] ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+                <!-- Préstamos individuales -->
+                <tr x-show="open[s.member_id]" x-cloak class="bg-slate-900/40">
+                  <td colspan="8" class="px-4 pb-4 pt-1">
+                    <div class="rounded-xl border border-slate-700/50 overflow-hidden">
+                      <table class="w-full text-xs">
+                        <thead>
+                          <tr class="text-slate-500 uppercase tracking-wider bg-slate-900/60">
+                            <th scope="col" class="text-left px-3 py-2 font-medium">Préstamo</th>
+                            <th scope="col" class="text-left px-3 py-2 font-medium">Inicio</th>
+                            <th scope="col" class="text-right px-3 py-2 font-medium">Desembolsado</th>
+                            <th scope="col" class="text-right px-3 py-2 font-medium">Saldo</th>
+                            <th scope="col" class="text-right px-3 py-2 font-medium">Tasa</th>
+                            <th scope="col" class="text-right px-3 py-2 font-medium">Interés pagado</th>
+                            <th scope="col" class="text-right px-3 py-2 font-medium">Interés pendiente</th>
+                            <th scope="col" class="text-left px-3 py-2 font-medium">Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <template x-for="l in s.loans" :key="l.id">
+                            <tr class="border-t border-slate-700/40">
+                              <td class="px-3 py-2 font-mono text-slate-400" x-text="'#' + l.id"></td>
+                              <td class="px-3 py-2 text-slate-300" x-text="fmtDate(l.start_date)"></td>
+                              <td class="px-3 py-2 text-right font-mono text-slate-300" x-text="money(l.initial_amount)"></td>
+                              <td class="px-3 py-2 text-right font-mono text-slate-100" x-text="money(l.saldo)"></td>
+                              <td class="px-3 py-2 text-right text-slate-300" x-text="(num(l.tasa) * 100).toFixed(1) + ' %'"></td>
+                              <td class="px-3 py-2 text-right font-mono text-slate-300" x-text="money(l.interes_pagado)"></td>
+                              <td class="px-3 py-2 text-right font-mono" :class="num(l.interes_pendiente) > 0 ? 'text-amber-300' : 'text-slate-500'" x-text="money(l.interes_pendiente)"></td>
+                              <td class="px-3 py-2">
+                                <span x-show="l.status === 'active'" class="inline-flex items-center gap-1 text-amber-300">{{ icon(I_CLOCK, "w-3 h-3") }} Activo</span>
+                                <span x-show="l.status === 'paid'" class="inline-flex items-center gap-1 text-emerald-300">{{ icon(I_CHECK, "w-3 h-3") }} Liquidado</span>
+                                <span x-show="l.status !== 'active' && l.status !== 'paid'" class="text-slate-400" x-text="l.status"></span>
+                              </td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                    </div>
+                    <a :href="'/loans?caja_id=' + cajaId" class="inline-block mt-2 text-xs text-emerald-400 hover:text-emerald-300 underline-offset-2 hover:underline">
+                      Registrar pagos en Préstamos →
+                    </a>
+                  </td>
+                </tr>
+              </tbody>
+            </template>
+            <tbody x-show="sociosFiltrados.length === 0">
+              <tr>
+                <td colspan="8" class="px-6 py-14 text-center">
+                  <p class="text-slate-400 font-medium" x-text="r.socios.length ? 'Ningún socio coincide con el filtro' : 'No hay socios internos con cuota quincenal mayor a $0'"></p>
+                  <p class="text-slate-600 text-sm mt-1" x-show="!r.socios.length">Asigna cuotas en Socios para que aparezcan aquí.</p>
+                  <button x-show="r.socios.length" @click="filtro = 'todos'; search = ''" class="mt-3 text-sm text-emerald-400 hover:text-emerald-300">Quitar filtros</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="px-4 py-3 border-t border-slate-700/40 bg-slate-900/20 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <p><span x-text="sociosFiltrados.length"></span> de <span x-text="r.socios.length"></span> socios · orden alfabético</p>
+          <p>Solo socios internos con cuota quincenal mayor a $0. Los saldos son los registrados; la fecha de corte define el interés pendiente.</p>
+        </div>
+      </div>
+
+      <!-- Otros préstamos (externos / sin cuota) -->
+      <div x-show="r.otros_prestamos.length" x-cloak class="mt-5 bg-slate-800/60 rounded-2xl border border-slate-700/50">
+        <button type="button" @click="verOtros = !verOtros" :aria-expanded="verOtros"
+                class="w-full flex items-center justify-between gap-3 px-5 py-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 rounded-2xl">
+          <div>
+            <p class="text-sm font-medium text-slate-200">Otros préstamos activos de la caja
+              <span class="ml-1 text-slate-500" x-text="'(' + r.otros_prestamos.length + ')'"></span></p>
+            <p class="text-xs text-slate-500 mt-0.5">Externos y socios sin cuota. No participan del reparto, pero deben liquidarse antes de cerrar.</p>
+          </div>
+          <span class="font-mono text-sm text-slate-200" x-text="money(otrosTotal)"></span>
+        </button>
+        <div x-show="verOtros" x-cloak class="px-5 pb-4">
+          <div class="overflow-x-auto rounded-xl border border-slate-700/50">
+            <table class="w-full text-sm min-w-[560px]">
+              <thead>
+                <tr class="text-xs text-slate-500 uppercase tracking-wider bg-slate-900/60">
+                  <th scope="col" class="text-left px-3 py-2 font-medium">Deudor</th>
+                  <th scope="col" class="text-left px-3 py-2 font-medium">Tipo</th>
+                  <th scope="col" class="text-right px-3 py-2 font-medium">Préstamos</th>
+                  <th scope="col" class="text-right px-3 py-2 font-medium">Capital</th>
+                  <th scope="col" class="text-right px-3 py-2 font-medium">Interés pendiente</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="o in r.otros_prestamos" :key="o.member_id">
+                  <tr class="border-t border-slate-700/40">
+                    <td class="px-3 py-2 text-slate-200" x-text="o.name"></td>
+                    <td class="px-3 py-2 text-slate-400" x-text="o.tipo"></td>
+                    <td class="px-3 py-2 text-right text-slate-300" x-text="o.loans.length"></td>
+                    <td class="px-3 py-2 text-right font-mono text-slate-100" x-text="money(o.deuda_capital)"></td>
+                    <td class="px-3 py-2 text-right font-mono text-amber-300" x-text="money(o.interes_pendiente)"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═════════════════════════ SIMULADOR ═════════════════════════ -->
+    <section x-show="tab === 'simulador'" x-cloak role="tabpanel">
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+        <div class="lg:col-span-2 bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5 sm:p-6">
+          <h2 class="text-base font-semibold text-slate-100">¿Puedo prestar $X?</h2>
+          <p class="text-sm text-slate-500 mt-1">El tope es el ahorro del socio menos su deuda vigente, limitado por el efectivo disponible en la caja.</p>
+
+          <div x-show="r.confirmado" x-cloak class="mt-5 text-sm text-slate-400 bg-slate-900/50 rounded-xl px-4 py-3">
+            La caja está cerrada: ya no se otorgan préstamos en este ciclo.
+          </div>
+
+          <form x-show="!r.confirmado" class="mt-5 space-y-4" @submit.prevent="simular()">
+            <div>
+              <label for="simSocio" class="block text-sm font-medium text-slate-300 mb-1.5">Socio</label>
+              <select id="simSocio" x-model="sim.member_id" @change="simular()"
+                      class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70 rounded-xl px-3 py-2.5 text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <option value="">Selecciona un socio…</option>
+                <template x-for="s in r.socios" :key="s.member_id">
+                  <option :value="s.member_id" x-text="s.name + ' — ahorro ' + money(s.ahorro)"></option>
+                </template>
+              </select>
+            </div>
+            <div>
+              <label for="simMonto" class="block text-sm font-medium text-slate-300 mb-1.5">Monto solicitado</label>
+              <div class="relative">
+                <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm">$</span>
+                <input id="simMonto" type="number" inputmode="decimal" min="0.01" step="0.01" x-model="sim.monto"
+                       @input.debounce.350ms="simular()" placeholder="0.00"
+                       class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70 rounded-xl pl-8 pr-4 py-2.5 text-slate-100 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20 placeholder-slate-600"/>
+              </div>
+            </div>
+            <button type="submit" :disabled="!sim.member_id || !(num(sim.monto) > 0) || sim.loading"
+                    class="w-full px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-text="sim.loading ? 'Calculando…' : 'Simular'"></span>
+            </button>
+          </form>
+        </div>
+
+        <div class="lg:col-span-3">
+          <div x-show="!sim.result" class="h-full min-h-[220px] flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-700 p-8">
+            <span class="text-slate-600">{{ icon(I_QUESTION, "w-10 h-10") }}</span>
+            <p class="text-slate-400 font-medium mt-3">Elige un socio y un monto</p>
+            <p class="text-slate-600 text-sm mt-1">Verás si se puede prestar, el máximo y qué lo limita. No se registra nada hasta que confirmes.</p>
+          </div>
+
+          <template x-if="sim.result">
+            <div class="rounded-2xl border p-5 sm:p-6"
+                 :class="sim.result.aprobado ? 'bg-emerald-900/15 border-emerald-700/40' : 'bg-red-900/15 border-red-700/40'" aria-live="polite">
+              <div class="flex items-start gap-3">
+                <span x-show="sim.result.aprobado" class="text-emerald-400">{{ icon(I_CHECK, "w-7 h-7") }}</span>
+                <span x-show="!sim.result.aprobado" class="text-red-400">{{ icon(I_WARN, "w-7 h-7") }}</span>
+                <div class="flex-1">
+                  <p class="text-lg font-semibold" :class="sim.result.aprobado ? 'text-emerald-200' : 'text-red-200'"
+                     x-text="sim.result.aprobado ? 'Sí se puede prestar' : 'No se puede prestar ese monto'"></p>
+                  <p class="text-sm mt-1" :class="sim.result.aprobado ? 'text-emerald-300/80' : 'text-red-300/80'" x-text="sim.result.motivo"></p>
+                </div>
+              </div>
+
+              <dl x-show="sim.result.elegible" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-5">
+                <div class="bg-slate-900/50 rounded-xl px-4 py-3">
+                  <dt class="text-xs text-slate-500">Ahorro acumulado</dt>
+                  <dd class="font-mono text-slate-100 mt-0.5" x-text="money(sim.result.ahorro)"></dd>
+                </div>
+                <div class="bg-slate-900/50 rounded-xl px-4 py-3">
+                  <dt class="text-xs text-slate-500">− Deuda vigente</dt>
+                  <dd class="font-mono text-slate-100 mt-0.5" x-text="money(sim.result.deuda_vigente)"></dd>
+                </div>
+                <div class="bg-slate-900/50 rounded-xl px-4 py-3" :class="sim.result.limitante === 'respaldo' ? 'ring-1 ring-amber-500/40' : ''">
+                  <dt class="text-xs text-slate-500">= Respaldo libre <span x-show="sim.result.limitante === 'respaldo'" class="text-amber-300">· limita</span></dt>
+                  <dd class="font-mono text-slate-100 mt-0.5" x-text="money(sim.result.respaldo_libre)"></dd>
+                </div>
+                <div class="bg-slate-900/50 rounded-xl px-4 py-3" :class="sim.result.limitante === 'liquidez' ? 'ring-1 ring-amber-500/40' : ''">
+                  <dt class="text-xs text-slate-500">Efectivo en caja <span x-show="sim.result.limitante === 'liquidez'" class="text-amber-300">· limita</span></dt>
+                  <dd class="font-mono text-slate-100 mt-0.5" x-text="money(sim.result.liquidez)"></dd>
+                </div>
+                <div class="bg-slate-900/50 rounded-xl px-4 py-3 col-span-2">
+                  <dt class="text-xs text-slate-500">Máximo que se le puede prestar</dt>
+                  <dd class="font-mono text-xl font-bold text-slate-100 mt-0.5" x-text="money(sim.result.maximo)"></dd>
+                </div>
+              </dl>
+
+              <div x-show="sim.result.elegible && !sim.result.aprobado && num(sim.result.maximo) > 0" class="mt-4">
+                <button type="button" @click="sim.monto = sim.result.maximo; simular()"
+                        class="text-sm font-medium text-emerald-400 hover:text-emerald-300">
+                  Usar el máximo (<span x-text="money(sim.result.maximo)"></span>)
+                </button>
+              </div>
+
+              <div x-show="sim.result.aprobado" class="mt-5 pt-5 border-t border-emerald-700/30 flex flex-col sm:flex-row sm:items-center gap-3">
+                <p class="text-sm text-slate-400 flex-1">Al registrar se vuelve a validar el límite con los saldos de ese momento.</p>
+                <button type="button" @click="sim.confirm = true"
+                        class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold transition-colors">
+                  Registrar préstamo de <span x-text="money(sim.result.monto)"></span>
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═════════════════════════ CIERRE Y REPARTO ═════════════════════════ -->
+    <section x-show="tab === 'cierre'" x-cloak role="tabpanel">
+
+      <!-- Requisitos -->
+      <div x-show="!r.confirmado" class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5 sm:p-6 mb-5">
+        <h2 class="text-base font-semibold text-slate-100">Requisitos para cerrar</h2>
+        <ul class="mt-4 space-y-3">
+          <li class="flex items-start gap-3">
+            <span :class="r.alertas_ahorro.length ? 'text-amber-400' : 'text-emerald-400'">
+              <span x-show="!r.alertas_ahorro.length">{{ icon(I_CHECK, "w-5 h-5") }}</span>
+              <span x-show="r.alertas_ahorro.length">{{ icon(I_WARN, "w-5 h-5") }}</span>
+            </span>
+            <div>
+              <p class="text-sm font-medium text-slate-200">Saldos de ahorro conciliados</p>
+              <p class="text-sm text-slate-500" x-text="r.alertas_ahorro.length ? r.alertas_ahorro.length + ' saldo(s) por conciliar (ver aviso arriba).' : 'Cada saldo coincide con sus movimientos.'"></p>
+            </div>
+          </li>
+          <li class="flex items-start gap-3">
+            <span :class="r.bloqueos.length ? 'text-amber-400' : 'text-emerald-400'">
+              <span x-show="!r.bloqueos.length">{{ icon(I_CHECK, "w-5 h-5") }}</span>
+              <span x-show="r.bloqueos.length">{{ icon(I_WARN, "w-5 h-5") }}</span>
+            </span>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-slate-200">Todos los préstamos liquidados</p>
+              <p class="text-sm text-slate-500" x-show="!r.bloqueos.length">
+                No quedan préstamos sin resolver<span x-show="num(r.totales.total_compensado) > 0">; se compensarán <span x-text="money(r.totales.total_compensado)"></span> con ahorro al confirmar</span>.
+              </p>
+              <div x-show="r.bloqueos.length">
+                <p class="text-sm text-slate-500"><span x-text="r.bloqueos.length"></span> pendiente(s) por <span x-text="money(bloqueosTotal)"></span> de capital.</p>
+                <div class="flex flex-wrap gap-2 mt-2">
+                  <template x-for="g in bloqueosPorTipo" :key="g.tipo">
+                    <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs whitespace-nowrap font-medium bg-slate-900/60 text-slate-300 ring-1 ring-slate-700">
+                      <span x-text="g.n"></span> <span x-text="g.label"></span>
+                    </span>
+                  </template>
+                </div>
+                <button type="button" @click="verBloqueos = !verBloqueos" :aria-expanded="verBloqueos" class="mt-2 text-sm text-emerald-400 hover:text-emerald-300">
+                  <span x-text="verBloqueos ? 'Ocultar detalle' : 'Ver detalle'"></span>
+                </button>
+                <ul x-show="verBloqueos" x-cloak class="mt-2 divide-y divide-slate-700/40 rounded-xl border border-slate-700/50 max-h-72 overflow-y-auto">
+                  <template x-for="b in r.bloqueos" :key="b.tipo + '-' + b.member_id">
+                    <li class="flex items-start justify-between gap-3 px-3 py-2 text-sm">
+                      <div class="min-w-0">
+                        <p class="text-slate-200 font-medium truncate" x-text="b.name"></p>
+                        <p class="text-slate-500 text-xs" x-text="b.detalle"></p>
+                      </div>
+                      <span class="font-mono text-slate-300 whitespace-nowrap" x-text="money(b.monto)"></span>
+                    </li>
+                  </template>
+                </ul>
+              </div>
+            </div>
+          </li>
+          <li class="flex items-start gap-3">
+            <span :class="r.reparto.errores.length ? 'text-red-400' : 'text-emerald-400'">
+              <span x-show="!r.reparto.errores.length">{{ icon(I_CHECK, "w-5 h-5") }}</span>
+              <span x-show="r.reparto.errores.length">{{ icon(I_WARN, "w-5 h-5") }}</span>
+            </span>
+            <div>
+              <p class="text-sm font-medium text-slate-200">Reparto válido</p>
+              <p class="text-sm text-slate-500" x-show="!r.reparto.errores.length">Los porcentajes suman 100 % y quienes nunca pidieron préstamo rinden menos por peso ahorrado.</p>
+              <template x-for="e in r.reparto.errores" :key="e">
+                <p class="text-sm text-red-300" x-text="e"></p>
+              </template>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Parámetros + comparación de grupos -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
+        <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+          <h2 class="text-sm font-semibold text-slate-100">Ponderación</h2>
+          <div class="mt-4">
+            <label for="factor" class="block text-sm text-slate-300">Factor para quienes nunca pidieron préstamo</label>
+            <div class="flex items-center gap-3 mt-2">
+              <input id="factor" type="number" min="0" max="1" step="0.05" :value="num(r.borrador.factor_sin_prestamo)"
+                     :disabled="r.confirmado || busy" @change="setFactor($event.target.value)"
+                     class="w-28 bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70 rounded-xl px-3 py-2 text-slate-100 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-60"/>
+              <p class="text-xs text-slate-500">Quienes pidieron préstamo pesan 1. Menor a 1 = menor rendimiento por peso.</p>
+            </div>
+          </div>
+          <label class="flex items-start gap-3 mt-5 cursor-pointer">
+            <input type="checkbox" :checked="r.borrador.incluir_interes" :disabled="r.confirmado || busy"
+                   @change="setIncluirInteres($event.target.checked)"
+                   class="mt-0.5 w-4 h-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-emerald-500/40"/>
+            <span>
+              <span class="block text-sm text-slate-300">Incluir interés pendiente en la deuda</span>
+              <span class="block text-xs text-slate-500">Se cobra del ahorro al compensar y se suma al rendimiento a repartir.</span>
+            </span>
+          </label>
+        </div>
+
+        <div class="lg:col-span-2 bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 class="text-sm font-semibold text-slate-100">Rendimiento a repartir</h2>
+            <p class="font-mono text-2xl font-bold text-emerald-400" x-text="money(r.totales.rendimiento_total)"></p>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">
+            <span x-text="money(r.totales.intereses_cobrados)"></span> cobrados
+            <span x-show="num(r.totales.interes_por_compensar) > 0"> + <span x-text="money(r.totales.interes_por_compensar)"></span> de interés pendiente que se compensa con ahorro</span>
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+            <template x-for="g in grupos" :key="g.label">
+              <div class="bg-slate-900/50 rounded-xl px-4 py-3">
+                <p class="text-xs text-slate-500"><span x-text="g.label"></span> · <span x-text="g.d.n"></span> socios</p>
+                <p class="font-mono text-slate-100 mt-1" x-text="money(g.d.rendimiento)"></p>
+                <div class="mt-2 h-1.5 bg-slate-700 rounded-full overflow-hidden" aria-hidden="true">
+                  <div class="h-full rounded-full" :class="g.color" :style="'width:' + g.width + '%'"></div>
+                </div>
+                <p class="text-xs text-slate-400 mt-1.5">
+                  <span class="font-mono font-semibold text-slate-200" x-text="num(g.d.rend_pct).toFixed(2) + ' %'"></span>
+                  de rendimiento sobre <span x-text="money(g.d.ahorro)"></span> ahorrados
+                </p>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabla de reparto -->
+      <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 overflow-hidden">
+        <div class="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-700/50">
+          <div>
+            <h2 class="text-sm font-semibold text-slate-100">Reparto por socio</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Participación = ahorro × factor ÷ suma de ahorros ponderados. Edita un porcentaje y el resto se reajusta para sumar 100 %.</p>
+          </div>
+          <button type="button" x-show="!r.confirmado && r.borrador.n_ajustes > 0" x-cloak @click="resetAjustes()" :disabled="busy"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 bg-slate-700/60 hover:bg-slate-700 transition-colors">
+            Restablecer propuesta (<span x-text="r.borrador.n_ajustes"></span> ajustes)
+          </button>
+        </div>
+        <div class="overflow-x-auto max-h-[560px] overflow-y-auto">
+          <table class="w-full text-sm min-w-[900px]">
+            <thead class="sticky top-0 z-10">
+              <tr class="bg-slate-900 text-xs font-medium text-slate-500 uppercase tracking-widest">
+                <th scope="col" class="text-left px-4 py-3">Socio</th>
+                <th scope="col" class="text-right px-4 py-3">Ahorro aportado</th>
+                <th scope="col" class="text-left px-4 py-3">Grupo</th>
+                <th scope="col" class="text-right px-4 py-3">% del reparto</th>
+                <th scope="col" class="text-right px-4 py-3">Rendimiento</th>
+                <th scope="col" class="text-right px-4 py-3">Ahorro a devolver</th>
+                <th scope="col" class="text-right px-4 py-3">Total a entregar</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="s in r.socios" :key="s.member_id">
+                <tr class="border-t border-slate-700/30 hover:bg-slate-700/20 transition-colors">
+                  <td class="px-4 py-2.5 font-medium text-slate-100" x-text="s.name"></td>
+                  <td class="px-4 py-2.5 text-right font-mono text-slate-200" x-text="money(s.ahorro)"></td>
+                  <td class="px-4 py-2.5">
+                    <span x-show="s.pidio_prestamo" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-xs whitespace-nowrap font-medium bg-sky-500/10 text-sky-300 ring-1 ring-sky-500/20">
+                      {{ icon(I_CHECK, "w-3 h-3") }} Pidió · ×1
+                    </span>
+                    <span x-show="!s.pidio_prestamo" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-xs whitespace-nowrap font-medium bg-slate-700/50 text-slate-400">
+                      {{ icon(I_MINUS, "w-3 h-3") }} Nunca pidió · ×<span x-text="num(s.factor)"></span>
+                    </span>
+                  </td>
+                  <td class="px-4 py-2 text-right">
+                    <div class="inline-flex items-center gap-1.5">
+                      <button type="button" x-show="s.ajustado && !r.confirmado" @click="setPct(s.member_id, null)" :disabled="busy"
+                              :aria-label="'Quitar ajuste manual de ' + s.name" title="Volver al porcentaje propuesto"
+                              class="p-1 rounded text-amber-300 hover:bg-slate-700">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                      </button>
+                      <input type="number" min="0" max="100" step="0.0001" :value="num(s.porcentaje).toFixed(4)"
+                             :disabled="r.confirmado || busy" :aria-label="'Porcentaje de ' + s.name"
+                             @change="setPct(s.member_id, $event.target.value)"
+                             :class="s.ajustado ? 'border-amber-500/60 text-amber-200' : 'border-slate-600/50 text-slate-100'"
+                             class="w-24 bg-slate-900/70 border rounded-lg px-2 py-1 text-right text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-80 disabled:bg-transparent disabled:border-transparent"/>
+                      <span class="text-slate-500 text-xs">%</span>
+                    </div>
+                  </td>
+                  <td class="px-4 py-2.5 text-right font-mono text-emerald-300" x-text="money(s.rendimiento)"></td>
+                  <td class="px-4 py-2.5 text-right">
+                    <span class="font-mono text-slate-200" x-text="money(s.ahorro_a_devolver)"></span>
+                    <span x-show="num(s.compensado) > 0" class="block text-xs text-slate-500" x-text="'− ' + money(s.compensado) + ' a su deuda'"></span>
+                  </td>
+                  <td class="px-4 py-2.5 text-right font-mono font-semibold text-slate-100" x-text="money(s.total_a_entregar)"></td>
+                </tr>
+              </template>
+            </tbody>
+            <tfoot class="sticky bottom-0">
+              <tr class="bg-slate-900 border-t border-slate-700 font-semibold text-slate-100">
+                <td class="px-4 py-3">Total · <span x-text="r.totales.n_socios"></span> socios</td>
+                <td class="px-4 py-3 text-right font-mono" x-text="money(r.totales.ahorro_elegible)"></td>
+                <td></td>
+                <td class="px-4 py-3 text-right font-mono" :class="r.reparto.errores.length ? 'text-red-300' : ''" x-text="num(r.reparto.total_pct).toFixed(4) + ' %'"></td>
+                <td class="px-4 py-3 text-right font-mono text-emerald-300" x-text="money(r.totales.rendimiento_total)"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="money(r.totales.total_a_devolver)"></td>
+                <td class="px-4 py-3 text-right font-mono" x-text="money(r.totales.total_a_entregar)"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- Acciones -->
+      <div class="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
+        <p x-show="!r.confirmado && !r.puede_confirmar" class="text-sm text-slate-500 sm:mr-auto">
+          Resuelve los requisitos de arriba para habilitar la confirmación. El PDF preliminar ya se puede exportar.
+        </p>
+        <a :href="'/api/v1/reports/cierre/' + cajaId" target="_blank" rel="noopener"
+           class="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-700/60 hover:bg-slate-700 text-slate-100 rounded-xl text-sm font-semibold transition-colors border border-slate-600/50">
+          {{ icon(I_DOC, "w-4 h-4") }} <span x-text="r.confirmado ? 'Exportar PDF definitivo' : 'Exportar PDF preliminar'"></span>
+        </a>
+        <button type="button" x-show="!r.confirmado" :disabled="!r.puede_confirmar || busy" @click="openConfirm()"
+                class="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-emerald-900/30 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none">
+          {{ icon(I_LOCK, "w-4 h-4") }} Confirmar cierre
+        </button>
+      </div>
+    </section>
+
+  </div>
+  </template>
+
+  <!-- ── Modal: registrar préstamo simulado ─────────────────────────────────── -->
+  <div x-show="sim.confirm" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       @keydown.escape.window="sim.confirm = false" role="dialog" aria-modal="true" aria-labelledby="simConfirmTitle">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="sim.confirm = false"></div>
+    <div class="relative bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl border border-slate-700/80 z-10">
+      <div class="px-6 py-5 border-b border-slate-700/60">
+        <h3 id="simConfirmTitle" class="text-base font-semibold text-slate-100">Registrar préstamo</h3>
+      </div>
+      <div class="px-6 py-5 space-y-3 text-sm text-slate-300" x-show="sim.result">
+        <p>Se registrará un préstamo interno a <strong class="text-slate-100" x-text="sim.result && sim.result.member_name"></strong>
+           por <strong class="text-slate-100 font-mono" x-text="sim.result && money(sim.result.monto)"></strong> con fecha de hoy y la tasa que le corresponde.</p>
+        <p class="text-slate-500">Si el respaldo o el efectivo cambiaron, el sistema lo rechazará y te mostrará el nuevo máximo.</p>
+        <div x-show="sim.error" x-cloak class="bg-red-900/20 border border-red-700/30 rounded-xl px-4 py-3 text-red-300" x-text="sim.error" role="alert"></div>
+      </div>
+      <div class="px-6 py-4 border-t border-slate-700/60 flex gap-3">
+        <button type="button" @click="sim.confirm = false" class="flex-1 px-4 py-2.5 text-slate-300 text-sm font-medium rounded-xl bg-slate-700/50 hover:bg-slate-700 transition-colors">Cancelar</button>
+        <button type="button" @click="registrarPrestamo()" :disabled="sim.saving"
+                class="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-60">
+          <span x-text="sim.saving ? 'Registrando…' : 'Registrar préstamo'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: confirmar cierre ────────────────────────────────────────────── -->
+  <div x-show="confirm.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       @keydown.escape.window="!confirm.saving && (confirm.open = false)" role="dialog" aria-modal="true" aria-labelledby="cierreConfirmTitle">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="!confirm.saving && (confirm.open = false)"></div>
+    <div class="relative bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-700/80 z-10">
+      <div class="px-6 py-5 border-b border-slate-700/60">
+        <h3 id="cierreConfirmTitle" class="text-base font-semibold text-slate-100">Confirmar cierre de caja</h3>
+        <p class="text-sm text-slate-500 mt-0.5">Esta acción no se puede deshacer desde la aplicación.</p>
+      </div>
+      <template x-if="r">
+        <div class="px-6 py-5 space-y-4">
+          <dl class="grid grid-cols-2 gap-3 text-sm">
+            <div class="bg-slate-900/50 rounded-xl px-4 py-3">
+              <dt class="text-xs text-slate-500">Fecha de corte</dt>
+              <dd class="text-slate-100 mt-0.5" x-text="fmtDate(r.fecha_corte)"></dd>
+            </div>
+            <div class="bg-slate-900/50 rounded-xl px-4 py-3">
+              <dt class="text-xs text-slate-500">Socios en el reparto</dt>
+              <dd class="text-slate-100 mt-0.5" x-text="r.totales.n_socios"></dd>
+            </div>
+            <div class="bg-slate-900/50 rounded-xl px-4 py-3">
+              <dt class="text-xs text-slate-500">Se compensa con ahorro</dt>
+              <dd class="font-mono text-slate-100 mt-0.5" x-text="money(r.totales.total_compensado)"></dd>
+            </div>
+            <div class="bg-slate-900/50 rounded-xl px-4 py-3">
+              <dt class="text-xs text-slate-500">Rendimiento a repartir</dt>
+              <dd class="font-mono text-emerald-300 mt-0.5" x-text="money(r.totales.rendimiento_total)"></dd>
+            </div>
+          </dl>
+          <ul class="text-sm text-slate-400 space-y-1 list-disc pl-5">
+            <li>Se liquidan con ahorro los préstamos autorizados y se guarda el reparto.</li>
+            <li>El cierre queda congelado: correcciones posteriores no lo cambian.</li>
+          </ul>
+          <div>
+            <label for="confirmWord" class="block text-sm text-slate-300 mb-1.5">Escribe <strong class="text-slate-100">CERRAR</strong> para confirmar</label>
+            <input id="confirmWord" type="text" x-model="confirm.word" autocomplete="off" x-ref="confirmWord"
+                   @keydown.enter="confirm.word.trim().toUpperCase() === 'CERRAR' && confirmarCierre()"
+                   class="w-full bg-slate-900/80 border border-slate-600/60 focus:border-emerald-500/70 rounded-xl px-4 py-2.5 text-slate-100 text-sm uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500/20"/>
+          </div>
+          <div x-show="confirm.error" x-cloak class="bg-red-900/20 border border-red-700/30 rounded-xl px-4 py-3 text-sm text-red-300" x-text="confirm.error" role="alert"></div>
+        </div>
+      </template>
+      <div class="px-6 py-4 border-t border-slate-700/60 flex gap-3">
+        <button type="button" @click="confirm.open = false" :disabled="confirm.saving"
+                class="flex-1 px-4 py-2.5 text-slate-300 text-sm font-medium rounded-xl bg-slate-700/50 hover:bg-slate-700 transition-colors disabled:opacity-60">Cancelar</button>
+        <button type="button" @click="confirmarCierre()" :disabled="confirm.saving || confirm.word.trim().toUpperCase() !== 'CERRAR'"
+                class="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+          <span x-text="confirm.saving ? 'Cerrando…' : 'Confirmar cierre'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function analisisApp(cajaId, today) {
+  const MXN = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+  const BLOQUEO_LABEL = {
+    por_definir: 'sin instrucción de pago',
+    faltante: 'con ahorro insuficiente',
+    separado: 'con pago por separado pendiente',
+    externo: 'externos / sin cuota',
+  };
+
+  return {
+    cajaId, today,
+    r: null,
+    loadError: '',
+    busy: false,
+    tab: 'socios',
+    tabs: [
+      { id: 'socios', label: 'Socios' },
+      { id: 'simulador', label: 'Simulador de préstamo' },
+      { id: 'cierre', label: 'Cierre y reparto' },
+    ],
+    filtro: 'todos',
+    search: '',
+    open: {},
+    verOtros: false,
+    verBloqueos: false,
+    sim: { member_id: '', monto: '', result: null, loading: false, confirm: false, saving: false, error: '' },
+    confirm: { open: false, word: '', saving: false, error: '' },
+
+    init() {
+      if (!this.cajaId) return;
+      const saved = (location.hash || '').replace('#', '');
+      if (this.tabs.some(t => t.id === saved)) this.tab = saved;
+      window.addEventListener('hashchange', () => {
+        const h = location.hash.replace('#', '');
+        if (this.tabs.some(t => t.id === h)) this.tab = h;
+      });
+      this.load();
+    },
+
+    // ── Helpers ──
+    num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; },
+    money(v) { return MXN.format(this.num(v)); },
+    fmtDate(iso) {
+      if (!iso) return '—';
+      const [y, m, d] = String(iso).slice(0, 10).split('-');
+      return `${d}/${m}/${y}`;
+    },
+    setTab(id) { this.tab = id; history.replaceState(null, '', '#' + id); },
+
+    get filtros() {
+      const s = () => (this.r ? this.r.socios : []);
+      return [
+        { id: 'todos', label: 'Todos', count: () => s().length },
+        { id: 'pidio', label: 'Pidió préstamos', count: () => s().filter(x => x.pidio_prestamo).length },
+        { id: 'activo', label: 'Con préstamo activo', count: () => s().filter(x => x.n_activos > 0).length },
+      ];
+    },
+    get sociosFiltrados() {
+      if (!this.r) return [];
+      const q = this.search.trim().toLocaleLowerCase('es');
+      return this.r.socios.filter(s => {
+        if (this.filtro === 'pidio' && !s.pidio_prestamo) return false;
+        if (this.filtro === 'activo' && !(s.n_activos > 0)) return false;
+        return !q || s.name.toLocaleLowerCase('es').includes(q) || s.group.toLocaleLowerCase('es').includes(q);
+      });
+    },
+    get porDefinirQueCubren() {
+      return this.r ? this.r.socios.filter(s => s.n_activos > 0 && s.cubre && s.instruccion === 'por_definir') : [];
+    },
+    get otrosTotal() {
+      return this.r ? this.r.otros_prestamos.reduce((a, o) => a + this.num(o.deuda_capital), 0) : 0;
+    },
+    get bloqueosTotal() {
+      return this.r ? this.r.bloqueos.reduce((a, b) => a + this.num(b.monto), 0) : 0;
+    },
+    get bloqueosPorTipo() {
+      const out = {};
+      (this.r ? this.r.bloqueos : []).forEach(b => { out[b.tipo] = (out[b.tipo] || 0) + 1; });
+      return Object.entries(out).map(([tipo, n]) => ({ tipo, n, label: BLOQUEO_LABEL[tipo] || tipo }));
+    },
+    get pendientes() {
+      if (!this.r) return 0;
+      return this.r.bloqueos.length + this.r.reparto.errores.length + (this.r.alertas_ahorro.length ? 1 : 0);
+    },
+    get grupos() {
+      if (!this.r) return [];
+      const con = this.r.reparto.con_prestamo, sin = this.r.reparto.sin_prestamo;
+      const max = Math.max(this.num(con.rend_pct), this.num(sin.rend_pct), 0.0001);
+      return [
+        { label: 'Pidieron préstamo', d: con, color: 'bg-sky-400', width: this.num(con.rend_pct) / max * 100 },
+        { label: 'Nunca pidieron', d: sin, color: 'bg-slate-400', width: this.num(sin.rend_pct) / max * 100 },
+      ];
+    },
+
+    // ── API ──
+    async api(method, url, body) {
+      const res = await fetch(url, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      let data = null;
+      try { data = await res.json(); } catch (e) { /* sin cuerpo */ }
+      if (!res.ok) {
+        const d = data && data.detail;
+        const msg = typeof d === 'string' ? d
+          : d && d.message ? d.message
+          : Array.isArray(d) && d[0] && d[0].msg ? d[0].msg
+          : `Error ${res.status}`;
+        const err = new Error(msg);
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    },
+    async load() {
+      this.loadError = '';
+      try {
+        this.r = await this.api('GET', `/api/v1/cierre/resumen?caja_id=${this.cajaId}`);
+      } catch (e) {
+        this.loadError = e.message;
+      }
+    },
+    /** Ejecuta un cambio que devuelve el resumen recalculado. */
+    async mutate(method, url, body, okMsg) {
+      if (this.busy) return false;
+      this.busy = true;
+      try {
+        this.r = await this.api(method, url, body);
+        if (okMsg) window.__toast(okMsg);
+        return true;
+      } catch (e) {
+        window.__toast(e.message, 'error');
+        await this.load();   // la pantalla vuelve a reflejar lo guardado
+        return false;
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    // ── Borrador ──
+    setFecha(value) {
+      const body = value ? { caja_id: this.cajaId, fecha_corte: value } : { caja_id: this.cajaId, usar_hoy: true };
+      return this.mutate('PUT', '/api/v1/cierre/borrador', body);
+    },
+    setFactor(value) {
+      const f = Number(value);
+      if (!(f >= 0 && f <= 1)) { window.__toast('El factor debe estar entre 0 y 1.', 'error'); return this.load(); }
+      return this.mutate('PUT', '/api/v1/cierre/borrador', { caja_id: this.cajaId, factor_sin_prestamo: f.toFixed(4) });
+    },
+    setIncluirInteres(checked) {
+      return this.mutate('PUT', '/api/v1/cierre/borrador', { caja_id: this.cajaId, incluir_interes: checked });
+    },
+    setPct(memberId, value) {
+      let pct = null;
+      if (value !== null && String(value).trim() !== '') {
+        pct = Number(value);
+        if (!(pct >= 0 && pct <= 100)) { window.__toast('El porcentaje debe estar entre 0 y 100.', 'error'); return this.load(); }
+        pct = pct.toFixed(6);
+      }
+      return this.mutate('PUT', '/api/v1/cierre/borrador', { caja_id: this.cajaId, overrides: { [memberId]: pct } });
+    },
+    resetAjustes() {
+      return this.mutate('PUT', '/api/v1/cierre/borrador', { caja_id: this.cajaId, limpiar_overrides: true }, 'Se restableció el reparto propuesto');
+    },
+    setInstruccion(ids, instruccion) {
+      return this.mutate('PUT', '/api/v1/cierre/instruccion', { caja_id: this.cajaId, member_ids: ids, instruccion });
+    },
+    liquidarQueCubren() {
+      const ids = this.porDefinirQueCubren.map(s => s.member_id);
+      return this.mutate('PUT', '/api/v1/cierre/instruccion',
+        { caja_id: this.cajaId, member_ids: ids, instruccion: 'ahorro' },
+        `${ids.length} socio(s) marcados para liquidar con ahorro`);
+    },
+    async reconciliar() {
+      this.busy = true;
+      try {
+        const res = await this.api('POST', `/api/v1/cierre/reconciliar-ahorros?caja_id=${this.cajaId}`);
+        window.__toast(`${res.corregidos.length} saldo(s) conciliado(s)`);
+      } catch (e) {
+        window.__toast(e.message, 'error');
+      } finally {
+        this.busy = false;
+        await this.load();
+      }
+    },
+
+    // ── Simulador ──
+    async simular() {
+      this.sim.error = '';
+      if (!this.sim.member_id || !(this.num(this.sim.monto) > 0)) { this.sim.result = null; return; }
+      this.sim.loading = true;
+      try {
+        this.sim.result = await this.api('POST', '/api/v1/cierre/simular', {
+          caja_id: this.cajaId, member_id: Number(this.sim.member_id), monto: String(this.sim.monto),
+        });
+      } catch (e) {
+        this.sim.result = null;
+        window.__toast(e.message, 'error');
+      } finally {
+        this.sim.loading = false;
+      }
+    },
+    async registrarPrestamo() {
+      if (!this.sim.result || this.sim.saving) return;
+      this.sim.saving = true;
+      this.sim.error = '';
+      try {
+        await this.api('POST', '/api/v1/loans/', {
+          member_id: this.sim.result.member_id, caja_id: this.cajaId,
+          initial_amount: this.sim.result.monto, loan_type: 'internal',
+          start_date: this.today, validar_respaldo: true,
+        });
+        this.sim.confirm = false;
+        window.__toast('Préstamo registrado');
+        this.sim.monto = '';
+        this.sim.result = null;
+        await this.load();
+      } catch (e) {
+        this.sim.error = e.message;
+        if (e.status === 409) await this.simular();
+      } finally {
+        this.sim.saving = false;
+      }
+    },
+
+    // ── Cierre ──
+    openConfirm() {
+      this.confirm = { open: true, word: '', saving: false, error: '' };
+      this.$nextTick(() => this.$refs.confirmWord && this.$refs.confirmWord.focus());
+    },
+    /** La misma llave se reutiliza al reintentar el mismo cierre: no se duplican movimientos. */
+    idempotencyKey() {
+      const k = `cierre-key:${this.cajaId}:${this.r.hash}`;
+      let v = null;
+      try { v = sessionStorage.getItem(k); } catch (e) { /* almacenamiento no disponible */ }
+      if (!v) {
+        v = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}-${this.cajaId}`);
+        try { sessionStorage.setItem(k, v); } catch (e) { /* idem */ }
+      }
+      return v;
+    },
+    async confirmarCierre() {
+      if (this.confirm.saving) return;
+      this.confirm.saving = true;
+      this.confirm.error = '';
+      try {
+        const res = await this.api('POST', '/api/v1/cierre/confirmar', {
+          caja_id: this.cajaId, idempotency_key: this.idempotencyKey(), expected_hash: this.r.hash,
+        });
+        this.r = res.resumen;
+        this.confirm.open = false;
+        window.__toast('Cierre confirmado');
+      } catch (e) {
+        this.confirm.error = e.message;
+        if (e.status === 409 || e.status === 422) await this.load();
+      } finally {
+        this.confirm.saving = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

@@ -2,7 +2,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String
+from sqlalchemy import (
+    Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -193,3 +196,111 @@ class Aportacion(Base):
 
     member: Mapped["Member"] = relationship("Member", back_populates="aportaciones")
     caja: Mapped["CajaConfig"] = relationship("CajaConfig", back_populates="aportaciones")
+
+
+# ── Análisis y cierre de caja ──────────────────────────────────────────────────
+
+class CierreInstruccion(Base):
+    """Instrucción de pago elegida por socio antes del cierre."""
+
+    __tablename__ = "cierre_instrucciones"
+    __table_args__ = (
+        UniqueConstraint("caja_id", "member_id", name="uq_cierre_instr_caja_member"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    caja_id: Mapped[int] = mapped_column(Integer, ForeignKey("caja_config.id"), nullable=False, index=True)
+    member_id: Mapped[int] = mapped_column(Integer, ForeignKey("members.id"), nullable=False)
+    # "ahorro" = liquidar con ahorro | "separado" = pago por separado | "por_definir"
+    instruccion: Mapped[str] = mapped_column(String(20), nullable=False, default="por_definir")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CierreBorrador(Base):
+    """Parámetros del cierre en preparación (uno por caja). Pantalla, PDF y cierre leen de aquí."""
+
+    __tablename__ = "cierre_borradores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    caja_id: Mapped[int] = mapped_column(Integer, ForeignKey("caja_config.id"), nullable=False, unique=True)
+    # None = usar la fecha de hoy
+    fecha_corte: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # Factor de ponderación para socios que nunca pidieron préstamo (los demás pesan 1)
+    factor_sin_prestamo: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False, default=Decimal("0.5000"))
+    incluir_interes: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # {"<member_id>": "<porcentaje>"} — porcentajes fijados a mano
+    overrides_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CierreCaja(Base):
+    """Corte confirmado de una caja. Inmutable: no se recalcula con correcciones posteriores."""
+
+    __tablename__ = "cierres_caja"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Un solo cierre por caja (cada caja es un ciclo)
+    caja_id: Mapped[int] = mapped_column(Integer, ForeignKey("caja_config.id"), nullable=False, unique=True)
+    fecha_corte: Mapped[date] = mapped_column(Date, nullable=False)
+    # Llave de idempotencia: reintentar la confirmación no duplica cargos ni pagos
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    factor_sin_prestamo: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
+    incluir_interes: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    total_ahorro: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    total_rendimiento: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    total_compensado: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    total_a_entregar: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    # Copia congelada del análisis completo al momento del cierre
+    snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    socios: Mapped[list["CierreSocio"]] = relationship(
+        "CierreSocio", back_populates="cierre", cascade="all, delete-orphan"
+    )
+    movimientos: Mapped[list["CierreMovimiento"]] = relationship(
+        "CierreMovimiento", back_populates="cierre", cascade="all, delete-orphan"
+    )
+
+
+class CierreSocio(Base):
+    """Renglón del reparto por socio dentro de un cierre confirmado."""
+
+    __tablename__ = "cierre_socios"
+    __table_args__ = (
+        UniqueConstraint("cierre_id", "member_id", name="uq_cierre_socio"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cierre_id: Mapped[int] = mapped_column(Integer, ForeignKey("cierres_caja.id"), nullable=False, index=True)
+    member_id: Mapped[int] = mapped_column(Integer, ForeignKey("members.id"), nullable=False)
+    member_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    ahorro_aportado: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    pidio_prestamo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    monto_desembolsado: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    deuda_al_corte: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    compensado: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    ahorro_a_devolver: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    factor: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
+    porcentaje: Mapped[Decimal] = mapped_column(Numeric(10, 6), nullable=False)
+    rendimiento: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    total_a_entregar: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    cierre: Mapped["CierreCaja"] = relationship("CierreCaja", back_populates="socios")
+
+
+class CierreMovimiento(Base):
+    """Bitácora de las compensaciones ahorro ↔ deuda aplicadas por un cierre."""
+
+    __tablename__ = "cierre_movimientos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cierre_id: Mapped[int] = mapped_column(Integer, ForeignKey("cierres_caja.id"), nullable=False, index=True)
+    member_id: Mapped[int] = mapped_column(Integer, ForeignKey("members.id"), nullable=False)
+    loan_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("loans.id"), nullable=True)
+    # "pago_interes" | "pago_capital" (lado deuda) | "cargo_ahorro" (lado ahorro)
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False)
+    monto: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    transaction_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("transactions.id"), nullable=True)
+    aportacion_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("aportaciones.id"), nullable=True)
+
+    cierre: Mapped["CierreCaja"] = relationship("CierreCaja", back_populates="movimientos")

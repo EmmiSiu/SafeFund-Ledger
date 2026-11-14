@@ -21,3 +21,6 @@ weasyprint
 cryptography
 python-jose[cryptography]
 passlib[bcrypt]
+# Pruebas (python -m pytest tests)
+pytest
+httpx

@@ -209,31 +209,24 @@ def get_loans_with_mora(caja_id: int, db: Session, dias_gracia: int = 35) -> lis
         .all()
     )
 
+    # Último pago de interés/capital de toda la cartera en una sola consulta.
+    last_dates: dict[tuple[int, str], date] = {
+        (loan_id, ttype): fecha
+        for loan_id, ttype, fecha in db.query(
+            Transaction.loan_id, Transaction.transaction_type, func.max(Transaction.transaction_date)
+        )
+        .join(Loan, Transaction.loan_id == Loan.id)
+        .filter(
+            Loan.caja_id == caja_id,
+            Transaction.transaction_type.in_(["interest_payment", "capital_payment"]),
+        )
+        .group_by(Transaction.loan_id, Transaction.transaction_type)
+    }
+    member_names = dict(db.query(Member.id, Member.name).filter(Member.caja_id == caja_id).all())
+
     result: list[LoanSummary] = []
     for loan in loans:
-        member = db.get(Member, loan.member_id)
-
-        last_interest = (
-            db.query(Transaction)
-            .filter(
-                Transaction.loan_id == loan.id,
-                Transaction.transaction_type == "interest_payment",
-            )
-            .order_by(Transaction.transaction_date.desc())
-            .first()
-        )
-
-        last_capital = (
-            db.query(Transaction)
-            .filter(
-                Transaction.loan_id == loan.id,
-                Transaction.transaction_type == "capital_payment",
-            )
-            .order_by(Transaction.transaction_date.desc())
-            .first()
-        )
-
-        ultimo_pago_fecha = last_interest.transaction_date if last_interest else None
+        ultimo_pago_fecha = last_dates.get((loan.id, "interest_payment"))
         dias_sin_pago = (today - ultimo_pago_fecha).days if ultimo_pago_fecha else (today - loan.start_date).days
         en_mora = dias_sin_pago > dias_gracia
 
@@ -245,7 +238,7 @@ def get_loans_with_mora(caja_id: int, db: Session, dias_gracia: int = 35) -> lis
         result.append(LoanSummary(
             loan_id=loan.id,
             member_id=loan.member_id,
-            member_name=member.name if member else "",
+            member_name=member_names.get(loan.member_id, ""),
             initial_amount=Decimal(str(loan.initial_amount)),
             outstanding_balance=balance,
             interest_rate=rate,
@@ -256,7 +249,7 @@ def get_loans_with_mora(caja_id: int, db: Session, dias_gracia: int = 35) -> lis
             interes_mes_actual=interes_mes,
             dias_sin_pago=dias_sin_pago,
             ultimo_pago_interes=ultimo_pago_fecha,
-            ultimo_abono_capital=last_capital.transaction_date if last_capital else None,
+            ultimo_abono_capital=last_dates.get((loan.id, "capital_payment")),
             en_mora=en_mora,
         ))
 
@@ -412,11 +405,6 @@ def build_loan_timeline(
     Reconstruye la evolución del préstamo evento por evento desde su apertura:
     monto inicial, cada movimiento (interés, abono a capital, incremento) con el
     saldo antes/después y el interés que se generó desde el evento anterior.
-
-    Nota: `loan.initial_amount` y `outstanding_balance` reflejan el estado ACTUAL
-    (incluyen incrementos ya aplicados), así que el saldo de apertura se
-    reconstruye restando los incrementos históricos para no duplicarlos al
-    reproducirlos en orden cronológico.
     """
     from app.models.base import Loan, Transaction
 
@@ -426,13 +414,28 @@ def build_loan_timeline(
     if fecha_corte is None:
         fecha_corte = date.today()
 
-    rate = Decimal(str(loan.interest_rate))
     txns = (
         db.query(Transaction)
         .filter(Transaction.loan_id == loan_id)
         .order_by(Transaction.transaction_date, Transaction.id)
         .all()
     )
+    return timeline_from_transactions(loan, txns, fecha_corte)
+
+
+def timeline_from_transactions(loan, txns, fecha_corte: date) -> LoanTimelineResult:
+    """
+    Versión pura de `build_loan_timeline`: recibe el préstamo y sus transacciones
+    ya cargadas (ordenadas por fecha, id). Permite calcular el interés pendiente
+    de toda una cartera con una sola consulta en lugar de una por préstamo.
+
+    Nota: `loan.initial_amount` y `outstanding_balance` reflejan el estado ACTUAL
+    (incluyen incrementos ya aplicados), así que el saldo de apertura se
+    reconstruye restando los incrementos históricos para no duplicarlos al
+    reproducirlos en orden cronológico.
+    """
+    loan_id = loan.id
+    rate = Decimal(str(loan.interest_rate))
 
     total_incrementos = sum(
         (Decimal(str(t.amount)) for t in txns if t.transaction_type == "loan_increment"),

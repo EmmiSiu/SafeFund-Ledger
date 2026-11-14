@@ -83,3 +83,14 @@ docker-compose restart app
 
 # O ver los logs para confirmar que el reload se disparó al guardar
 docker-compose logs -f app
+
+## Análisis y cierre de caja
+
+- **Pantalla:** menú «Análisis de caja» (`/analisis`). Tres pestañas: socios (cobertura ahorro vs. deuda e instrucción de pago), simulador «¿Puedo prestar $X?» y cierre con reparto de rendimientos.
+- **Un solo cálculo:** `app/services/cierre.py::build_resumen` alimenta la pantalla, el PDF (`/api/v1/reports/cierre/{caja_id}`) y la confirmación, así que los tres coinciden para el mismo corte.
+- **Saldo de ahorro:** la fuente única es `app/services/savings.py` (aportaciones + saldos iniciales importados). Las pantallas de consulta no escriben; el saldo guardado se actualiza al registrar o corregir movimientos.
+- **Cierre:** atómico e idempotente (`POST /api/v1/cierre/confirmar`). Exige todos los préstamos liquidados; una vez confirmado queda congelado y el PDF pasa de «preliminar» a «definitivo».
+- **Migración:** `python -m alembic upgrade head` (solo agrega tablas `cierre_*`; la app también las crea al arrancar).
+- **Pruebas:** `python -m pytest tests` (usan una base temporal, nunca `data/safefund.db`).
+- **Ensayo sin riesgo:** copia `data/safefund.db` a `data/sandbox.db` y levanta la configuración `safefund-sandbox` de `.claude/launch.json` (puerto 8011) para practicar el cierre sobre la copia.
+- **PDF en Windows sin GTK:** si WeasyPrint no puede generar el PDF, los reportes se entregan como HTML imprimible (`?formato=html` lo fuerza).

@@ -12,6 +12,9 @@ class LoanCreate(BaseModel):
     interest_rate: Optional[Decimal] = Field(None, ge=0, le=1)
     loan_type: str = Field(..., pattern="^(internal|external)$")
     start_date: date
+    # True cuando el préstamo se confirma desde el simulador de Análisis de caja:
+    # se revalida el respaldo del socio y el efectivo dentro de la misma operación.
+    validar_respaldo: bool = False
 
 
 class LoanRead(BaseModel):

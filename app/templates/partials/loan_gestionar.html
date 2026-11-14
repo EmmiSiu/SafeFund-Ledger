@@ -3,7 +3,6 @@
 {% else %}
 {% set fmt = "{:,.2f}".format %}
 <div x-data='gestionarPanel({{ loan_json | safe }}, "{{ today }}")'
-     x-init="init()"
      class="h-full flex flex-col">
 
   <!-- Header -->
